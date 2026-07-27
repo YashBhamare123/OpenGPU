@@ -12,7 +12,7 @@ The current deployment profile is an NVIDIA A6000 with 48 GB VRAM, CUDA 12.8, 16
 - One current or future reservation per user
 - Fresh SSH password for every reservation
 - GPU container start and removal tied to reservation state
-- Persistent bind-mounted `/workspace` and SSH host keys
+- Persistent, quota-limited bind-mounted `/workspace` and SSH host keys
 - Audit events, provisioning retries, and scheduler health reporting
 - CUDA 12.8 image with PyTorch and common ML tooling
 
@@ -82,7 +82,7 @@ Use `./start.sh --tunnel` only when `NGROK_DOMAIN`, the ngrok account, and `ALLO
 
 ## Important boundaries
 
-Only `/workspace` persists between reservations. The rest of a user container is deleted when its reservation ends or is cancelled. Workspace size and retention are not currently enforced.
+Only `/workspace` persists between reservations. It has a 1 GB XFS project quota. The rest of a user container is deleted when its reservation ends or is cancelled, and its writable layer is limited to 30 GB. Workspace retention is not currently automated.
 
 OpenGPU assumes trusted institutional users. Containers grant their user passwordless sudo and are not a hostile multi-tenant isolation boundary. Keep the web service and SSH port range on an institutional LAN or VPN, terminate browser traffic with HTTPS, and never expose the Docker socket to the API process.
 

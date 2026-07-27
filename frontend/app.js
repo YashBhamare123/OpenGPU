@@ -1,7 +1,7 @@
 const $ = id => document.getElementById(id);
 const QUARTER_HOUR = 15 * 60 * 1000;
 const DAY = 24 * 60 * 60 * 1000;
-const state = {email:"",user:null,reservations:[],viewDate:startOfDay(new Date()),selection:null,confirmSelection:null,refreshTimer:null,provisioningTimer:null,cancelEvent:null};
+const state = {email:"",user:null,reservations:[],viewDate:startOfDay(new Date()),selection:null,confirmSelection:null,refreshTimer:null,provisioningTimer:null,provisioningNoticeAt:0,cancelEvent:null};
 
 function startOfDay(value){const date=new Date(value);date.setHours(0,0,0,0);return date}
 function addDays(value,days){const date=new Date(value);date.setDate(date.getDate()+days);return startOfDay(date)}
@@ -87,13 +87,12 @@ $("edit-booking").addEventListener("click",()=>$("confirm-dialog").close());
 $("submit-booking").addEventListener("click",async()=>{
   const button=$("submit-booking"),selection=state.confirmSelection;if(!selection)return;busy(button,true,"Reserving…");
   try{
-    const{response}=await api("/reservations",{method:"POST",headers:{"Content-Type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify({start_time:selection.start.toISOString(),end_time:selection.end.toISOString()})});
+    await api("/reservations",{method:"POST",headers:{"Content-Type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify({start_time:selection.start.toISOString(),end_time:selection.end.toISOString()})});
     $("confirm-dialog").close();
-    if(response.status===202){announce("Preparing your environment","Your requested time is not held yet. We’ll let you know here as soon as your GPU environment is ready.","success");pollProvisioning();return}
-    announce("Reservation confirmed — preparing new access",`${fullDate(selection.start)}, ${time(selection.start)}–${time(selection.end)} is secured. A fresh SSH password will be emailed shortly.`,"success");await loadReservations(true);pollProvisioning("rotation");
+    state.provisioningNoticeAt=Date.now();announce("Reservation confirmed — preparing new access",`${fullDate(selection.start)}, ${time(selection.start)}–${time(selection.end)} is secured. A fresh SSH password will be emailed shortly.`,"loading");await loadReservations(true);pollProvisioning();
   }catch(error){$("confirm-dialog").close();announce("Reservation not completed",error.message,"error");await loadReservations(true)}finally{busy(button,false)}
 });
-async function pollProvisioning(mode="initial"){clearTimeout(state.provisioningTimer);try{const{data}=await api("/me");if(data.provisioning_state==="ready"){announce(mode==="rotation"?"New SSH password sent":"Your environment is ready",mode==="rotation"?"Check your email for the credentials for this reservation.":"Choose the time again to complete your reservation.","success");return}if(data.provisioning_state==="failed"){announce("Environment setup failed","Ask an administrator to retry the setup before reserving.","error");return}state.provisioningTimer=setTimeout(()=>pollProvisioning(mode),3000)}catch(error){announce("Could not check setup",error.message,"error")}}
+async function pollProvisioning(){clearTimeout(state.provisioningTimer);try{const{data}=await api("/me");if(data.provisioning_state==="ready"){const remaining=Math.max(0,900-(Date.now()-state.provisioningNoticeAt));state.provisioningTimer=setTimeout(()=>announce("SSH access sent","Check your email for the credentials for this reservation.","success"),remaining);return}if(data.provisioning_state==="failed"){announce("Environment setup failed","Ask an administrator to retry the setup.","error");return}state.provisioningTimer=setTimeout(pollProvisioning,3000)}catch(error){announce("Could not check setup",error.message,"error")}}
 
 $("email-form").addEventListener("submit",async event=>{event.preventDefault();state.email=$("email").value.trim();loginNotice();busy($("email-submit"),true,"Sending…");try{await api("/auth/request-code",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:state.email})});$("email-form").classList.add("hidden");$("code-form").classList.remove("hidden");$("code").focus()}catch(error){loginNotice(error.message)}finally{busy($("email-submit"),false)}});
 $("code-form").addEventListener("submit",async event=>{event.preventDefault();loginNotice();busy($("code-submit"),true,"Verifying…");try{await api("/auth/verify-code",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:state.email,code:$("code").value.trim()})});const{data}=await api("/me");showApp(data)}catch(error){loginNotice(error.message);$("code").select()}finally{busy($("code-submit"),false)}});

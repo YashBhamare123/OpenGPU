@@ -37,7 +37,7 @@ The origin middleware is not a replacement for HTTPS, secure cookies, firewall r
 ## Known limitations
 
 - Passwordless sudo allows a user full control of their container.
-- The service does not enforce workspace capacity or retention.
+- Workspace capacity is enforced, but automatic retention/deletion is not yet implemented.
 - The shared Docker daemon is a high-privilege dependency.
 - Password authentication is weaker than per-reservation SSH certificates or user public keys.
 - Application-level OTP issuance is not a distributed edge rate limiter.

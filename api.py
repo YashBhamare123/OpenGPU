@@ -208,23 +208,9 @@ def create_reservation(request: ReservationRequest, user=Depends(current_user),
             cursor.execute(
                 "SELECT enabled,provisioning_state FROM teams WHERE id=%s FOR UPDATE", (user["id"],)
             )
-            enabled, provision_state = cursor.fetchone()
+            enabled, _provision_state = cursor.fetchone()
             if not enabled:
                 raise HTTPException(status_code=403, detail="User is disabled")
-            if provision_state != "ready":
-                cursor.execute(
-                    """
-                    INSERT INTO provisioning_jobs(team_id,purpose) VALUES (%s,'initial')
-                    ON CONFLICT(team_id) DO UPDATE SET state='pending',purpose='initial',available_at=NOW(),updated_at=NOW()
-                    WHERE provisioning_jobs.state='failed'
-                    """,
-                    (user["id"],),
-                )
-                cursor.execute("UPDATE teams SET provisioning_state='pending' WHERE id=%s", (user["id"],))
-                audit(cursor, "provisioning_requested", user["id"])
-                conn.commit()
-                return Response(content=json.dumps({"detail": "Account is being provisioned"}),
-                                status_code=status.HTTP_202_ACCEPTED, media_type="application/json")
             cursor.execute(
                 "SELECT id,start_time,end_time FROM reservations WHERE team_id=%s AND idempotency_key=%s",
                 (user["id"], idempotency_key),

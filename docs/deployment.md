@@ -10,6 +10,7 @@ This is a minimal deployment reference for contributors and small internal insta
 - SMTP relay with STARTTLS
 - Private network address for published SSH ports
 - HTTPS reverse proxy, or configured ngrok tunnel for development
+- XFS-backed Docker data root mounted with project quotas (`prjquota` or `pquota`)
 
 ## Configure
 
@@ -21,7 +22,16 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Review every value in `.env`. Required settings are the database URL, advertised and bind addresses, SMTP sender/relay, allowed browser origins, and secure-cookie policy. `WORKSPACE_ROOT` must be absolute and writable by the scheduler account.
+Review every value in `.env`. Required settings are the database URL, advertised and bind addresses, SMTP sender/relay, allowed browser origins, and secure-cookie policy. `WORKSPACE_ROOT` must be an absolute path on the quota-enabled XFS mount.
+
+Install the root-owned storage helper and its narrowly scoped sudo rule once:
+
+```bash
+sudo ./scripts/configure-docker-storage-backend
+sudo ./scripts/install-storage-helper
+```
+
+The backend script disables Docker's containerd snapshotter so `overlay2` can enforce per-container `size` storage options on XFS. It restarts Docker and can make images from the other image store temporarily unavailable, so run it before building `opengpu:ml`. The default configuration gives each persistent workspace 1 GB and each disposable container writable layer 30 GB. The helper owns workspace creation; the scheduler account does not need general write access to `WORKSPACE_ROOT`.
 
 For a fresh database, apply `postgres/init.sql`. Numbered migrations are for an existing schema and must be applied in order after a backup.
 
@@ -32,7 +42,7 @@ docker build -t opengpu:ml .
 ./start.sh --check
 ```
 
-The preflight verifies required configuration, database tables and columns, Docker access, image existence, workspace-root feasibility, and Python syntax.
+The preflight verifies required configuration, database tables and columns, Docker access, image existence, passwordless access to the storage helper, and Python syntax.
 
 ## Run
 
@@ -46,7 +56,7 @@ For the configured development tunnel:
 ./start.sh --tunnel
 ```
 
-The supervisor runs the API and scheduler together and stops all children if one exits. Production deployments may install the separate units in `deploy/`; the API service account should not belong to the Docker group, while the scheduler account requires Docker access and write access to `WORKSPACE_ROOT`.
+The supervisor runs the API and scheduler together and stops all children if one exits. Production deployments may install the separate units in `deploy/`; the API service account should not belong to the Docker group, while the scheduler account requires Docker access and passwordless access only to the installed storage helper.
 
 Verify:
 

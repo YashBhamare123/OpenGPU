@@ -109,11 +109,20 @@ if [[ "$workspace_root" != /* ]]; then
   echo "WORKSPACE_ROOT must be an absolute path." >&2
   exit 1
 fi
-workspace_parent="$(dirname -- "$workspace_root")"
-if [[ ! -d "$workspace_root" && ! -w "$workspace_parent" ]]; then
-  echo "WORKSPACE_ROOT does not exist and its parent is not writable: $workspace_parent" >&2
+storage_helper="$(python3 - <<'PY'
+from config import settings
+print(settings.storage_helper)
+PY
+)"
+if [[ "$storage_helper" != /* || ! -x "$storage_helper" ]]; then
+  echo "STORAGE_HELPER must be an installed executable at an absolute path: $storage_helper" >&2
   exit 1
 fi
+if ! sudo -n -l "$storage_helper" 1 >/dev/null 2>&1; then
+  echo "The scheduler cannot run STORAGE_HELPER without a password. Run: sudo ./scripts/install-storage-helper" >&2
+  exit 1
+fi
+echo "Storage helper: ok ($workspace_root)"
 
 echo "Checking PostgreSQL and hardened schema..."
 python3 - <<'PY'

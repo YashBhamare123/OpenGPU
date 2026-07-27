@@ -17,7 +17,9 @@ class Settings:
     server_ip: str = os.environ.get("SERVER_IP", "127.0.0.1")
     docker_bind_ip: str = os.environ.get("DOCKER_BIND_IP", "127.0.0.1")
     docker_image: str = os.environ.get("DOCKER_IMAGE", "opengpu:ml")
-    workspace_root: str = os.environ.get("WORKSPACE_ROOT", "/home/user/devbox-workspaces")
+    workspace_root: str = os.environ.get("WORKSPACE_ROOT", "/var/lib/docker/opengpu-workspaces")
+    storage_helper: str = os.environ.get("STORAGE_HELPER", "/usr/local/sbin/opengpu-storage-init")
+    container_storage_limit: str = os.environ.get("CONTAINER_STORAGE_LIMIT", "30G")
     ssh_port_start: int = _int("SSH_PORT_START", 22001)
     ssh_port_end: int = _int("SSH_PORT_END", 32000)
     smtp_host: str = os.environ.get("SMTP_HOST", "")
@@ -32,8 +34,6 @@ class Settings:
     memory_limit: str = os.environ.get("CONTAINER_MEMORY", "32g")
     cpu_limit: int = _int("CONTAINER_CPUS", 16)
     pids_limit: int = _int("CONTAINER_PIDS", 4096)
-    storage_limit: str = os.environ.get("CONTAINER_STORAGE", "16g")
-    workspace_limit: str = os.environ.get("WORKSPACE_STORAGE", "2g")
     shm_size: str = os.environ.get("CONTAINER_SHM", "16g")
     cookie_secure: bool = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
     allowed_origins: tuple[str, ...] = tuple(

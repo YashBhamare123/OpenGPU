@@ -4,7 +4,7 @@ OpenGPU uses SMTP with STARTTLS for two messages: login OTPs and reservation SSH
 
 ## Login codes
 
-OTP email is plain text. The request endpoint suppresses SMTP errors and always returns a generic response so callers cannot enumerate approved addresses or learn mail-server state.
+The OTP email includes matching plain-text and professionally formatted HTML alternatives, with a copy-friendly one-time-code block and explicit expiry guidance. The request endpoint suppresses SMTP errors and always returns a generic response so callers cannot enumerate approved addresses or learn mail-server state.
 
 Codes are six digits, stored only as hashes, expire according to `OTP_MINUTES`, and are limited by attempts and hourly issuance.
 

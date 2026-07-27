@@ -24,6 +24,8 @@ workspace/       -> /workspace
 ssh-host-keys/   -> /etc/ssh/host_keys
 ```
 
+Before Docker provisioning, the scheduler invokes the narrowly scoped root helper configured by `STORAGE_HELPER`. The helper creates the paths on the XFS-backed Docker filesystem, assigns a stable project ID, and applies a 1 GB hard quota to `workspace/`. Docker independently applies `CONTAINER_STORAGE_LIMIT` (30 GB by default) to the disposable container writable layer.
+
 Provisioning generates a new password and SHA-512-compatible Linux password hash, creates a stopped labelled container, and emails credentials when the job purpose requires it. Only the hash is stored. If email delivery fails, the incomplete container is removed and retry generates a different password.
 
 ## Reconciliation
@@ -50,7 +52,7 @@ Consequently, cancellation and expiry delete the container filesystem. Bind-moun
 - Host storage paths are derived only from a positive numeric database ID and an absolute configured root.
 - A running provisioning container is not replaced.
 - Published SSH ports are probed before creation.
-- Containers request one GPU, use configured CPU/memory/PID/shared-memory limits, and set `restart=no`.
+- Containers request one GPU, use configured CPU/memory/PID/shared-memory/storage limits, and set `restart=no`.
 - SSH host keys are generated in their persistent bind mount, not baked into the image.
 
 ## Changing lifecycle code

@@ -3,6 +3,11 @@
 # Files in /etc/profile.d are sourced into the user's shell. Do not change the
 # caller's shell options, and stay quiet for non-interactive SSH commands/SCP.
 # When this helper is executed directly, always render it for local review.
+# Ubuntu may source profile.d files from POSIX sh as well as Bash.
+if [ -z "${BASH_VERSION:-}" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 if [[ "${BASH_SOURCE[0]}" != "$0" ]] && { [[ $- != *i* ]] || [[ ! -t 1 ]]; }; then
     return 0
 fi

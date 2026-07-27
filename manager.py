@@ -1,3 +1,4 @@
+import os
 import secrets
 import socket
 import string
@@ -68,24 +69,17 @@ def user_storage_paths(user_id: int) -> tuple[Path, Path]:
     configured_root = Path(settings.workspace_root).expanduser()
     if not configured_root.is_absolute():
         raise RuntimeError("WORKSPACE_ROOT must be an absolute path")
-    root = configured_root.resolve()
+    # The quota helper deliberately creates root-owned paths that the scheduler
+    # cannot stat. Normalize lexically without traversing those directories;
+    # the configured root is trusted deployment configuration, not user input.
+    root = Path(os.path.abspath(configured_root))
     user_root = root / "users" / str(user_id)
     workspace = user_root / "workspace"
     host_keys = user_root / "ssh-host-keys"
-    for path, mode in ((root, 0o750), (user_root, 0o750), (workspace, 0o750), (host_keys, 0o700)):
-        path.mkdir(mode=mode, parents=True, exist_ok=True)
-        path.chmod(mode)
-    try:
-        subprocess.run(
-            ["sudo", "xfs_quota", "-x", "-c", f"project -s -p {workspace} {user_id}", str(root)],
-            check=False, capture_output=True
-        )
-        subprocess.run(
-            ["sudo", "xfs_quota", "-x", "-c", f"limit -p bhard={settings.workspace_limit} {user_id}", str(root)],
-            check=False, capture_output=True
-        )
-    except Exception:
-        pass
+    subprocess.run(
+        ["sudo", "-n", settings.storage_helper, str(user_id)],
+        capture_output=True, text=True, check=True, timeout=15,
+    )
     return workspace, host_keys
 
 
@@ -120,8 +114,8 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
         nano_cpus=settings.cpu_limit * 1_000_000_000,
         pids_limit=settings.pids_limit,
         shm_size=settings.shm_size,
-        storage_opt={"size": settings.storage_limit},
         restart_policy={"Name": "no"},
+        storage_opt={"size": settings.container_storage_limit},
     )
     if email_credentials:
         try:

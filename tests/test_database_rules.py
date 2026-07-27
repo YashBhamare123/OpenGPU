@@ -5,6 +5,9 @@ from pathlib import Path
 
 import psycopg
 import pytest
+from fastapi import HTTPException
+
+import api
 
 
 TEST_URL = os.environ.get("TEST_DATABASE_URL", "")
@@ -100,3 +103,51 @@ def test_two_users_competing_for_one_slot_have_one_winner():
     for thread in threads: thread.start()
     for thread in threads: thread.join(timeout=10)
     assert sorted(results) == ["conflict", "ok"]
+
+
+def test_immediate_idempotent_api_retry_returns_original_while_provisioning(monkeypatch):
+    with psycopg.connect(TEST_URL) as setup:
+        setup.execute("TRUNCATE audit_events,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
+        user_id = setup.execute(
+            "INSERT INTO teams(name,email,provisioning_state) VALUES ('gpu1','retry@example.edu','ready') RETURNING id"
+        ).fetchone()[0]
+        setup.commit()
+
+    monkeypatch.setattr(api, "get_connection", lambda: psycopg.connect(TEST_URL))
+    start = datetime.now(timezone.utc) + timedelta(hours=1)
+    request = api.ReservationRequest(start_time=start, end_time=start + timedelta(minutes=30))
+    user = {"id": user_id}
+
+    first = api.create_reservation(request, user=user, idempotency_key="retry-key-0001")
+    retry = api.create_reservation(request, user=user, idempotency_key="retry-key-0001")
+
+    assert retry == first
+    with psycopg.connect(TEST_URL) as check:
+        assert check.execute("SELECT provisioning_state FROM teams WHERE id=%s", (user_id,)).fetchone()[0] == "pending"
+        assert check.execute("SELECT count(*) FROM reservations WHERE team_id=%s", (user_id,)).fetchone()[0] == 1
+
+    different = api.ReservationRequest(start_time=start, end_time=start + timedelta(minutes=45))
+    with pytest.raises(HTTPException) as error:
+        api.create_reservation(different, user=user, idempotency_key="retry-key-0001")
+    assert error.value.status_code == 409
+
+
+def test_first_reservation_provisions_environment_in_single_request(monkeypatch):
+    with psycopg.connect(TEST_URL) as setup:
+        setup.execute("TRUNCATE audit_events,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
+        user_id = setup.execute(
+            "INSERT INTO teams(name,email,provisioning_state) VALUES ('gpu1','first@example.edu','unprovisioned') RETURNING id"
+        ).fetchone()[0]
+        setup.commit()
+
+    monkeypatch.setattr(api, "get_connection", lambda: psycopg.connect(TEST_URL))
+    start = datetime.now(timezone.utc) + timedelta(hours=1)
+    request = api.ReservationRequest(start_time=start, end_time=start + timedelta(minutes=30))
+
+    result = api.create_reservation(request, user={"id": user_id}, idempotency_key="first-click-0001")
+
+    assert result["id"] > 0
+    with psycopg.connect(TEST_URL) as check:
+        assert check.execute("SELECT count(*) FROM reservations WHERE team_id=%s", (user_id,)).fetchone()[0] == 1
+        assert check.execute("SELECT provisioning_state FROM teams WHERE id=%s", (user_id,)).fetchone()[0] == "pending"
+        assert check.execute("SELECT purpose,state FROM provisioning_jobs WHERE team_id=%s", (user_id,)).fetchone() == ("reservation", "pending")

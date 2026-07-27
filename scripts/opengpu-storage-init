@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+workspace_root=/var/lib/docker/opengpu-workspaces
+xfs_mount=/var/lib/docker
+project_base=200000
+
+if [[ $# -ne 1 || ! "$1" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Usage: opengpu-storage-init POSITIVE_USER_ID" >&2
+  exit 2
+fi
+
+user_id=$1
+project_id=$((project_base + user_id))
+user_root="$workspace_root/users/$user_id"
+workspace="$user_root/workspace"
+host_keys="$user_root/ssh-host-keys"
+
+if [[ "$(findmnt -n -o FSTYPE -T "$xfs_mount")" != xfs ]]; then
+  echo "$xfs_mount is not backed by XFS" >&2
+  exit 1
+fi
+if ! findmnt -n -o OPTIONS -T "$xfs_mount" | grep -Eq '(^|,)(pquota|prjquota)(,|$)'; then
+  echo "$xfs_mount is not mounted with project quotas" >&2
+  exit 1
+fi
+
+install -d -m 0750 -o root -g root "$workspace_root" "$workspace_root/users" "$user_root"
+install -d -m 0750 -o root -g root "$workspace"
+install -d -m 0700 -o root -g root "$host_keys"
+
+chattr -p "$project_id" +P "$workspace"
+xfs_quota -x -c "limit -p bsoft=1g bhard=1g $project_id" "$xfs_mount"
+
+printf 'user_id=%s project_id=%s workspace=%s\n' "$user_id" "$project_id" "$workspace"

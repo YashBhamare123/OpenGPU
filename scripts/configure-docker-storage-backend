@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ${EUID} -ne 0 ]]; then
+    echo "Run this installer with sudo." >&2
+    exit 1
+fi
+
+daemon_config=/etc/docker/daemon.json
+backup_config=/etc/docker/daemon.json.opengpu-backup
+temporary_config=$(mktemp)
+trap 'rm -f "$temporary_config"' EXIT
+
+if [[ -f "$daemon_config" ]]; then
+    cp --preserve=mode,ownership,timestamps "$daemon_config" "$backup_config"
+else
+    printf '{}\n' >"$daemon_config"
+    chmod 0644 "$daemon_config"
+fi
+
+python3 - "$daemon_config" "$temporary_config" <<'PY'
+import json
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1])
+target = pathlib.Path(sys.argv[2])
+config = json.loads(source.read_text())
+features = config.setdefault("features", {})
+features["containerd-snapshotter"] = False
+target.write_text(json.dumps(config, indent=4, sort_keys=True) + "\n")
+PY
+
+install -o root -g root -m 0644 "$temporary_config" "$daemon_config"
+dockerd --validate --config-file="$daemon_config"
+systemctl restart docker
+
+driver=$(docker info --format '{{.Driver}}')
+driver_status=$(docker info --format '{{json .DriverStatus}}')
+if [[ "$driver" != "overlay2" ]]; then
+    echo "Expected overlay2 after restart, got: $driver ($driver_status)" >&2
+    exit 1
+fi
+
+echo "Docker now uses overlay2. Previous configuration: $backup_config"

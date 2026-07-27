@@ -6,14 +6,9 @@ from html import escape
 from config import settings
 
 
-def send_email(recipient: str, subject: str, body: str) -> None:
+def _deliver(message: EmailMessage) -> None:
     if not settings.smtp_host:
         raise RuntimeError("SMTP is not configured")
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = settings.smtp_from
-    message["To"] = recipient
-    message.set_content(body)
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
         smtp.starttls()
         if settings.smtp_user:
@@ -21,8 +16,41 @@ def send_email(recipient: str, subject: str, body: str) -> None:
         smtp.send_message(message)
 
 
+def send_email(recipient: str, subject: str, body: str) -> None:
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = settings.smtp_from
+    message["To"] = recipient
+    message.set_content(body)
+    _deliver(message)
+
+
 def send_otp(email: str, code: str) -> None:
-    send_email(email, "AIML GPU login code", f"Your login code is {code}. It expires soon.")
+    plain = (
+        "Your GPU Compute login code\n\n"
+        f"{code}\n\n"
+        f"This code expires in {settings.otp_minutes} minutes and can only be used once.\n"
+        "If you did not request this code, you can safely ignore this email.\n"
+    )
+    message = EmailMessage()
+    message["Subject"] = "Your GPU Compute login code"
+    message["From"] = settings.smtp_from
+    message["To"] = email
+    message.set_content(plain)
+    message.add_alternative(
+        f"""<!doctype html><html><body style="margin:0;background:#f3f9fc;color:#102532;font-family:Arial,sans-serif">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#ffffff;border:1px solid #d5e3eb">
+        <tr><td style="padding:24px 28px;background:#25B5FF;color:#102532"><div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;opacity:.75">AIML GPU Compute</div><h1 style="margin:7px 0 0;font-size:24px">Confirm your sign-in</h1></td></tr>
+        <tr><td style="padding:28px"><p style="margin:0 0 22px;color:#617783">Enter this one-time code in the reservation portal to continue.</p>
+        <div style="margin-bottom:7px;font-size:11px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;color:#617783">Login code</div>
+        <pre style="margin:0;padding:20px;overflow:auto;background:#102532;color:#ffffff;border-radius:3px;text-align:center;font-family:'JetBrains Mono','SFMono-Regular',Consolas,monospace;font-size:30px;font-weight:700;line-height:1.25;letter-spacing:8px;white-space:pre-wrap">{escape(code)}</pre>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:22px;background:#e5f6ff;border:1px solid #9bdcff"><tr><td style="padding:15px 17px"><strong style="display:block;font-size:14px">Expires in {settings.otp_minutes} minutes</strong><span style="color:#356b89;font-size:12px">This code can only be used once. Never share it with anyone.</span></td></tr></table>
+        <p style="margin:22px 0 0;color:#617783;font-size:12px">If you did not request this sign-in code, you can safely ignore this email. No changes will be made to your account.</p>
+        </td></tr></table></td></tr></table></body></html>""",
+        subtype="html",
+    )
+    _deliver(message)
 
 
 def send_credentials(email: str, username: str, password: str, port: int,
@@ -70,8 +98,4 @@ def send_credentials(email: str, username: str, password: str, port: int,
         </td></tr></table></td></tr></table></body></html>""",
         subtype="html",
     )
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
-        smtp.starttls()
-        if settings.smtp_user:
-            smtp.login(settings.smtp_user, settings.smtp_password)
-        smtp.send_message(message)
+    _deliver(message)
