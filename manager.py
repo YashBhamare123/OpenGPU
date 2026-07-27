@@ -75,6 +75,17 @@ def user_storage_paths(user_id: int) -> tuple[Path, Path]:
     for path, mode in ((root, 0o750), (user_root, 0o750), (workspace, 0o750), (host_keys, 0o700)):
         path.mkdir(mode=mode, parents=True, exist_ok=True)
         path.chmod(mode)
+    try:
+        subprocess.run(
+            ["sudo", "xfs_quota", "-x", "-c", f"project -s -p {workspace} {user_id}", str(root)],
+            check=False, capture_output=True
+        )
+        subprocess.run(
+            ["sudo", "xfs_quota", "-x", "-c", f"limit -p bhard={settings.workspace_limit} {user_id}", str(root)],
+            check=False, capture_output=True
+        )
+    except Exception:
+        pass
     return workspace, host_keys
 
 
@@ -109,6 +120,7 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
         nano_cpus=settings.cpu_limit * 1_000_000_000,
         pids_limit=settings.pids_limit,
         shm_size=settings.shm_size,
+        storage_opt={"size": settings.storage_limit},
         restart_policy={"Name": "no"},
     )
     if email_credentials:

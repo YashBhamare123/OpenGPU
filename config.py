@@ -32,6 +32,8 @@ class Settings:
     memory_limit: str = os.environ.get("CONTAINER_MEMORY", "32g")
     cpu_limit: int = _int("CONTAINER_CPUS", 16)
     pids_limit: int = _int("CONTAINER_PIDS", 4096)
+    storage_limit: str = os.environ.get("CONTAINER_STORAGE", "16g")
+    workspace_limit: str = os.environ.get("WORKSPACE_STORAGE", "2g")
     shm_size: str = os.environ.get("CONTAINER_SHM", "16g")
     cookie_secure: bool = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
     allowed_origins: tuple[str, ...] = tuple(

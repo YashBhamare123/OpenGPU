@@ -56,6 +56,7 @@ def test_retry_recreates_container_before_emailing_new_password(monkeypatch, tmp
 
     result = manager.provision_user(1, "user@example.edu", "gpu1", 0, "gpu-user-1", "gpu-workspace-1")
     assert existing.removed
+    assert captured["storage_opt"] == {"size": "16g"}
     assert captured["environment"]["TEAM_PASSWORD_HASH"] == "$6$new-hash"
     assert captured["volumes"][str(tmp_path / "users" / "1" / "workspace")]["bind"] == "/workspace"
     assert captured["volumes"][str(tmp_path / "users" / "1" / "ssh-host-keys")]["bind"] == "/etc/ssh/host_keys"
