@@ -1,0 +1,16 @@
+[Unit]
+Description=AIML GPU reservation API
+After=network.target postgresql.service
+
+[Service]
+User=gpu-api
+WorkingDirectory=/opt/aiml-gpu-reservation
+EnvironmentFile=/etc/aiml-gpu-reservation.env
+ExecStart=/opt/aiml-gpu-reservation/.venv/bin/uvicorn api:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

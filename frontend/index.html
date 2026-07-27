@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>GPU Reservations</title>
+  <link rel="stylesheet" href="/frontend/app.css?v=20">
+  <script src="/frontend/app.js?v=20" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="GPU Reservations home">
+      <span class="brand-mark">G</span>
+      <span><strong>GPU Reservations</strong><small>RTX 6000 Ada</small></span>
+    </a>
+    <div id="user-menu" class="user-menu hidden">
+      <span><strong id="user-name"></strong><small id="user-email"></small></span>
+      <button id="logout" class="button ghost" type="button">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="login" class="login-panel">
+      <div class="eyebrow">Restricted access</div>
+      <h1>Reserve compute time.</h1>
+      <p>Sign in with an approved institute email.</p>
+      <div id="login-notice" class="form-notice hidden" role="alert"></div>
+      <form id="email-form" class="form-stack">
+        <label for="email">Email address</label>
+        <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="name@institute.edu" required>
+        <button id="email-submit" class="button primary" type="submit">Send login code</button>
+      </form>
+      <form id="code-form" class="form-stack hidden">
+        <div class="form-heading"><label for="code">Verification code</label><button id="change-email" class="text-button" type="button">Use another email</button></div>
+        <input id="code" class="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required>
+        <button id="code-submit" class="button primary" type="submit">Continue</button>
+      </form>
+    </section>
+
+    <section id="workspace" class="workspace hidden">
+      <div class="page-heading">
+        <div><div class="eyebrow">Shared compute · RTX 6000 Ada</div><h1>Reserve GPU time</h1><p>Set your time below. The availability timeline updates as you adjust it.</p></div>
+        <div class="status"><span class="status-dot"></span>GPU online</div>
+      </div>
+      <div id="notice" class="notice hidden" role="status" aria-live="polite">
+        <span id="notice-icon" class="notice-icon" aria-hidden="true"></span>
+        <div><strong id="notice-title"></strong><p id="notice-message"></p></div>
+        <button id="dismiss-notice" class="notice-close" type="button" aria-label="Dismiss message">×</button>
+      </div>
+      <section class="booking-composer" aria-labelledby="composer-title">
+        <div class="composer-intro"><div class="eyebrow">New reservation</div><h2 id="composer-title">Build your session</h2><p>The selected time appears live on the timeline.</p></div>
+        <div id="reservation-limit" class="reservation-limit hidden" role="status"><strong>One reservation at a time</strong><span>You already have a current or upcoming reservation. Cancel or complete it before booking another.</span></div>
+        <div class="composer-fields">
+          <div class="composer-field"><span id="start-time-label">Start time</span><div class="time-entry" role="group" aria-labelledby="start-time-label"><label><span class="sr-only">Time, hour and minute</span><input id="start-time-text" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="09:00" aria-describedby="time-entry-hint"></label><div class="period-toggle" aria-label="AM or PM"><button id="period-am" type="button" data-period="AM">AM</button><button id="period-pm" type="button" data-period="PM">PM</button></div></div><small id="time-entry-hint" class="field-hint">Type any minute · ↑↓ adjusts by one minute</small></div>
+          <div class="composer-field"><span>Duration</span><div class="duration-stepper"><button id="duration-down" type="button" aria-label="Reduce duration by 15 minutes">−</button><output id="duration-value">1 hr</output><button id="duration-up" type="button" aria-label="Increase duration by 15 minutes">+</button></div></div>
+          <div id="composer-summary" class="composer-summary"><span id="composer-date">Today</span><strong id="composer-range">9:00 AM — 10:00 AM</strong><small id="composer-status">Available to reserve</small></div>
+          <button id="confirm-booking" class="button primary reserve-button" type="button">Reserve GPU</button>
+        </div>
+        <p id="selection-error" class="inline-error hidden"></p>
+        <div id="my-reservations" class="my-reservations hidden"></div>
+      </section>
+      <section class="schedule" aria-label="GPU availability calendar">
+        <header class="schedule-header">
+          <div class="date-control">
+            <button id="previous-day" class="day-arrow" type="button" aria-label="Previous week">←</button>
+            <div class="active-date"><span id="day-context">Today</span><h2 id="calendar-date"></h2></div>
+            <button id="next-day" class="day-arrow" type="button" aria-label="Next week">→</button>
+          </div>
+          <button id="return-today" class="button secondary hidden" type="button">Return to today</button>
+        </header>
+        <nav id="day-strip" class="day-strip" aria-label="Browse days"></nav>
+        <div class="availability-key" aria-label="Availability legend">
+          <span><i class="key-open"></i>Available</span><span><i class="key-busy"></i>Unavailable</span><span><i class="key-yours"></i>Your reservation</span><span><i class="key-preview"></i>Your selection</span>
+        </div>
+        <div id="timeline-scroller" class="horizontal-calendar">
+          <div id="timeline" class="timeline" aria-label="Daily availability timeline">
+            <div class="hour-labels timeline-fallback" aria-hidden="true">
+              <span class="hour-label major" style="left:0">12 AM</span><span class="hour-label" style="left:4.1667%">1 AM</span><span class="hour-label major" style="left:8.3333%">2 AM</span><span class="hour-label" style="left:12.5%">3 AM</span><span class="hour-label major" style="left:16.6667%">4 AM</span><span class="hour-label" style="left:20.8333%">5 AM</span><span class="hour-label major" style="left:25%">6 AM</span><span class="hour-label" style="left:29.1667%">7 AM</span><span class="hour-label major" style="left:33.3333%">8 AM</span><span class="hour-label" style="left:37.5%">9 AM</span><span class="hour-label major" style="left:41.6667%">10 AM</span><span class="hour-label" style="left:45.8333%">11 AM</span><span class="hour-label major" style="left:50%">12 PM</span><span class="hour-label" style="left:54.1667%">1 PM</span><span class="hour-label major" style="left:58.3333%">2 PM</span><span class="hour-label" style="left:62.5%">3 PM</span><span class="hour-label major" style="left:66.6667%">4 PM</span><span class="hour-label" style="left:70.8333%">5 PM</span><span class="hour-label major" style="left:75%">6 PM</span><span class="hour-label" style="left:79.1667%">7 PM</span><span class="hour-label major" style="left:83.3333%">8 PM</span><span class="hour-label" style="left:87.5%">9 PM</span><span class="hour-label major" style="left:91.6667%">10 PM</span><span class="hour-label" style="left:95.8333%">11 PM</span><span class="hour-label major" style="left:100%">12 AM</span>
+            </div>
+            <div class="timeline-empty-message">Loading availability…</div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="cancel-dialog">
+    <div class="dialog-copy"><h2>Cancel reservation?</h2><p>Active SSH access will stop shortly after cancellation.</p></div>
+    <div class="dialog-actions"><button id="keep-reservation" class="button secondary" type="button">Keep it</button><button id="confirm-cancel" class="button danger" type="button">Cancel reservation</button></div>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="confirm-dialog" aria-labelledby="confirm-dialog-title">
+    <div class="dialog-copy">
+      <div class="eyebrow">Review reservation</div>
+      <h2 id="confirm-dialog-title">Confirm your GPU session</h2>
+      <p>Check the configuration and timing before reserving.</p>
+      <dl class="configuration-summary">
+        <div class="configuration-time"><dt>Date</dt><dd id="confirm-date"></dd></div>
+        <div class="configuration-time"><dt>Session</dt><dd id="confirm-time"></dd></div>
+        <div><dt>GPU</dt><dd>NVIDIA RTX A6000<small>48 GB VRAM</small></dd></div>
+        <div><dt>CPU</dt><dd>16 cores</dd></div>
+        <div><dt>Memory</dt><dd>32 GB RAM</dd></div>
+        <div><dt>Runtime</dt><dd>CUDA 12.8</dd></div>
+      </dl>
+    </div>
+    <div class="dialog-actions"><button id="edit-booking" class="button secondary" type="button">Go back</button><button id="submit-booking" class="button primary" type="button">Confirm reservation</button></div>
+  </dialog>
+</body>
+</html>

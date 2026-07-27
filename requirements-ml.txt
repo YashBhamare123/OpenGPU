@@ -1,0 +1,57 @@
+# Scientific computing and data
+numpy
+scipy
+pandas
+polars
+pyarrow
+scikit-learn
+statsmodels
+sympy
+
+# Notebooks and visualization
+jupyterlab
+ipywidgets
+matplotlib
+seaborn
+plotly
+
+# Computer vision, audio, and media
+opencv-python-headless
+Pillow
+imageio
+imageio-ffmpeg
+librosa
+soundfile
+
+# Hugging Face and LLM tooling
+transformers
+datasets
+tokenizers
+accelerate
+peft
+safetensors
+sentence-transformers
+evaluate
+huggingface-hub
+
+# Model interchange, experiments, and training utilities
+onnx
+onnxruntime-gpu
+tensorboard
+mlflow
+wandb
+lightning
+torchmetrics
+optuna
+
+# Everyday developer and data tooling
+tqdm
+rich
+requests
+httpx
+pyyaml
+python-dotenv
+h5py
+openpyxl
+pytest
+ruff

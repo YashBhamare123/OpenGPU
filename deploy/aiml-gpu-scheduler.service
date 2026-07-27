@@ -1,0 +1,16 @@
+[Unit]
+Description=AIML GPU reservation scheduler
+After=docker.service postgresql.service
+Requires=docker.service
+
+[Service]
+User=gpu-scheduler
+WorkingDirectory=/opt/aiml-gpu-reservation
+EnvironmentFile=/etc/aiml-gpu-reservation.env
+ExecStart=/opt/aiml-gpu-reservation/.venv/bin/python scheduler.py
+Restart=always
+RestartSec=5
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
