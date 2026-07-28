@@ -4,7 +4,7 @@
 
 ## Authentication
 
-Only enabled rows in `teams` can receive an OTP. Requests are limited to five challenges per user per hour. Codes and session tokens are stored as SHA-256 hashes; the raw session token exists only in the browser's HTTP-only cookie.
+Only enabled rows in `teams` can receive an OTP. The request response indicates whether the address is approved so the frontend can show the administrator-contact flow. Requests are limited to five challenges per user per hour. Codes and session tokens are stored as SHA-256 hashes; the raw session token exists only in the browser's HTTP-only cookie.
 
 Verification locks the newest usable challenge, increments attempts before comparison, consumes the challenge on success, and creates a server-side session. Logout revokes the matching session and deletes the cookie.
 
@@ -31,6 +31,6 @@ Reservation listings expose timing and ownership but hide another user's reserva
 - Put cross-request invariants in PostgreSQL, not only in Python.
 - Keep user identity derived from the session; never accept ownership IDs from the browser.
 - Use parameterized SQL and explicit transaction boundaries.
-- Keep authentication failures and OTP requests generic to avoid account enumeration.
+- Keep code-verification failures generic. OTP requests intentionally expose allowlist status to support the administrator-contact screen; do not expose any additional account data.
 - Sanitize operational errors before returning or persisting them.
 - Add route contract tests and database tests for new correctness rules.

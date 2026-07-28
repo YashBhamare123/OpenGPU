@@ -63,9 +63,11 @@ def _get_owned_volume(name: str, user_id: int, allow_legacy: bool = False):
     return volume
 
 
-def user_storage_paths(user_id: int) -> tuple[Path, Path]:
+def user_storage_paths(user_id: int, workspace_gb: int = 2) -> tuple[Path, Path]:
     if user_id < 1:
         raise ValueError("User ID must be positive")
+    if workspace_gb < 1 or workspace_gb > 199:
+        raise ValueError("Workspace storage must be between 1 and 199 GB")
     configured_root = Path(settings.workspace_root).expanduser()
     if not configured_root.is_absolute():
         raise RuntimeError("WORKSPACE_ROOT must be an absolute path")
@@ -77,7 +79,7 @@ def user_storage_paths(user_id: int) -> tuple[Path, Path]:
     workspace = user_root / "workspace"
     host_keys = user_root / "ssh-host-keys"
     subprocess.run(
-        ["sudo", "-n", settings.storage_helper, str(user_id)],
+        ["sudo", "-n", settings.storage_helper, str(user_id), str(workspace_gb)],
         capture_output=True, text=True, check=True, timeout=15,
     )
     return workspace, host_keys
@@ -86,10 +88,13 @@ def user_storage_paths(user_id: int) -> tuple[Path, Path]:
 def provision_user(user_id: int, email: str, username: str, ssh_port: int,
                    container_name: str, volume_name: str, allow_legacy_volume: bool = False,
                    email_credentials: bool = True, reservation_start: datetime | None = None,
-                   reservation_end: datetime | None = None) -> str:
+                   reservation_end: datetime | None = None, workspace_gb: int = 2,
+                   temp_storage_gb: int = 100) -> str:
+    if workspace_gb < 1 or temp_storage_gb < 1 or workspace_gb + temp_storage_gb > 200:
+        raise ValueError("Reservation storage must total no more than 200 GB")
     password = random_password()
     password_hash = linux_password_hash(password)
-    workspace, host_keys = user_storage_paths(user_id)
+    workspace, host_keys = user_storage_paths(user_id, workspace_gb)
     container = _get_owned_container(container_name, user_id)
     if container is not None:
         container.reload()
@@ -108,14 +113,15 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
             str(workspace): {"bind": "/workspace", "mode": "rw"},
             str(host_keys): {"bind": "/etc/ssh/host_keys", "mode": "rw"},
         },
-        environment={"TEAM_NAME": username, "TEAM_PASSWORD_HASH": password_hash},
+        environment={"TEAM_NAME": username, "TEAM_PASSWORD_HASH": password_hash,
+                     "WORKSPACE_GB": str(workspace_gb), "TEMP_STORAGE_GB": str(temp_storage_gb)},
         device_requests=[docker.types.DeviceRequest(count=1, capabilities=[["gpu"]])],
         mem_limit=settings.memory_limit,
         nano_cpus=settings.cpu_limit * 1_000_000_000,
         pids_limit=settings.pids_limit,
         shm_size=settings.shm_size,
         restart_policy={"Name": "no"},
-        storage_opt={"size": settings.container_storage_limit},
+        storage_opt={"size": f"{temp_storage_gb}G"},
     )
     if email_credentials:
         try:

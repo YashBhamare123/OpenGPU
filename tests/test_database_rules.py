@@ -50,6 +50,36 @@ def test_valid_and_overlong_reservations(conn):
                      (uid, start + timedelta(hours=4), start + timedelta(hours=8)))
 
 
+def test_explicit_admin_override_allows_extended_reservation(conn):
+    uid = user(conn)
+    start = datetime.now(timezone.utc) + timedelta(hours=1)
+    conn.execute(
+        """INSERT INTO reservations(team_id,start_time,end_time,duration_override)
+           VALUES (%s,%s,%s,TRUE)""",
+        (uid, start, start + timedelta(hours=8)),
+    )
+    assert conn.execute(
+        "SELECT duration_override FROM reservations WHERE team_id=%s", (uid,)
+    ).fetchone()[0] is True
+
+
+def test_admin_can_allowlist_a_new_user(monkeypatch, conn):
+    conn.rollback()
+    monkeypatch.setattr(api, "get_connection", lambda: psycopg.connect(TEST_URL))
+    created = api.admin_whitelist_user(
+        api.AdminUserRequest(email="new-user@iiti.ac.in", display_name="New User"),
+        admin={"id": 999, "email": "mc240041040@iiti.ac.in"},
+    )
+    assert created["email"] == "new-user@iiti.ac.in"
+    assert created["username"].startswith("gpu")
+    assert created["enabled"] is True
+    with psycopg.connect(TEST_URL) as check:
+        assert check.execute(
+            "SELECT display_name,enabled,provisioning_state FROM teams WHERE email=%s",
+            ("new-user@iiti.ac.in",),
+        ).fetchone() == ("New User", True, "unprovisioned")
+
+
 def test_overlap_is_rejected(conn):
     first = user(conn)
     second = conn.execute(

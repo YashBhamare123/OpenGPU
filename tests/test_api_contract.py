@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from fastapi import HTTPException, Response
 
-from api import current_user, enforce_origin, live, settings
+from api import current_user, enforce_origin, live, require_admin, settings
 
 
 def test_liveness_has_no_external_dependency():
@@ -14,6 +14,14 @@ def test_private_routes_require_authentication_before_external_access():
     with pytest.raises(HTTPException) as error:
         current_user(session=None)
     assert error.value.status_code == 401
+
+
+def test_admin_access_is_restricted_to_configured_email():
+    admin = {"email": "mc240041040@iiti.ac.in"}
+    assert require_admin(admin) is admin
+    with pytest.raises(HTTPException) as error:
+        require_admin({"email": "user@iiti.ac.in"})
+    assert error.value.status_code == 403
 
 
 def test_foreign_origin_is_rejected():

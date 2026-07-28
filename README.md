@@ -1,5 +1,14 @@
 # OpenGPU
 
+```text
+ ██████╗ ██████╗ ███████╗███╗   ██╗ ██████╗ ██████╗ ██╗   ██╗
+██╔═══██╗██╔══██╗██╔════╝████╗  ██║██╔════╝ ██╔══██╗██║   ██║
+██║   ██║██████╔╝█████╗  ██╔██╗ ██║██║  ███╗██████╔╝██║   ██║
+██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║██║   ██║██╔═══╝ ██║   ██║
+╚██████╔╝██║     ███████╗██║ ╚████║╚██████╔╝██║     ╚██████╔╝
+ ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝      ╚═════╝
+```
+
 OpenGPU is a self-hosted reservation service for sharing one NVIDIA GPU over SSH. Approved users sign in with an emailed one-time code, inspect availability, reserve a session, and receive reservation-specific SSH credentials. PostgreSQL is the source of truth; a dedicated scheduler reconciles reservations into disposable Docker containers.
 
 The current deployment profile is an NVIDIA A6000 with 48 GB VRAM, CUDA 12.8, 16 CPU cores, and 32 GB RAM per user container.
@@ -14,6 +23,7 @@ The current deployment profile is an NVIDIA A6000 with 48 GB VRAM, CUDA 12.8, 16
 - GPU container start and removal tied to reservation state
 - Persistent, quota-limited bind-mounted `/workspace` and SSH host keys
 - Audit events, provisioning retries, and scheduler health reporting
+- Server-authorized admin page for user allowlisting, delegated bookings, cancellations, and explicit extended-duration overrides
 - CUDA 12.8 image with PyTorch and common ML tooling
 
 ## Architecture
@@ -82,7 +92,7 @@ Use `./start.sh --tunnel` only when `NGROK_DOMAIN`, the ngrok account, and `ALLO
 
 ## Important boundaries
 
-Only `/workspace` persists between reservations. It has a 1 GB XFS project quota. The rest of a user container is deleted when its reservation ends or is cancelled, and its writable layer is limited to 30 GB. Workspace retention is not currently automated.
+Only `/workspace` persists between reservations. Reservations default to a 2 GB workspace and 100 GB of temporary container storage. Administrators can customize both values per reservation, with a combined 200 GB cap. The temporary writable layer is deleted when the reservation ends or is cancelled. Workspace retention is not currently automated.
 
 OpenGPU assumes trusted institutional users. Containers grant their user passwordless sudo and are not a hostile multi-tenant isolation boundary. Keep the web service and SSH port range on an institutional LAN or VPN, terminate browser traffic with HTTPS, and never expose the Docker socket to the API process.
 

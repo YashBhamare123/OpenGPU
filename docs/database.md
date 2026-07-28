@@ -43,7 +43,7 @@ erDiagram
 
 ## Enforced reservation rules
 
-- `end_time` must be after `start_time` and no more than three hours later.
+- `end_time` must be after `start_time`. It may be more than three hours later only when an administrator explicitly sets `duration_override` for that reservation.
 - Non-cancelled ranges cannot overlap globally; adjacent half-open ranges are allowed.
 - A trigger rejects reservations beginning in the past.
 - The owning user must exist and be enabled.

@@ -118,7 +118,7 @@ if [[ "$storage_helper" != /* || ! -x "$storage_helper" ]]; then
   echo "STORAGE_HELPER must be an installed executable at an absolute path: $storage_helper" >&2
   exit 1
 fi
-if ! sudo -n -l "$storage_helper" 1 >/dev/null 2>&1; then
+if ! sudo -n -l "$storage_helper" 1 2 >/dev/null 2>&1; then
   echo "The scheduler cannot run STORAGE_HELPER without a password. Run: sudo ./scripts/install-storage-helper" >&2
   exit 1
 fi
@@ -135,6 +135,7 @@ required_tables = {
 required_team_columns = {
     "ssh_password_hash", "provisioning_state", "volume_name", "legacy_volume",
 }
+required_reservation_columns = {"duration_override", "workspace_gb", "temp_storage_gb"}
 with get_connection() as connection:
     tables = {
         row[0] for row in connection.execute(
@@ -146,17 +147,25 @@ with get_connection() as connection:
             "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='teams'"
         )
     }
+    reservation_columns = {
+        row[0] for row in connection.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='reservations'"
+        )
+    }
 missing_tables = sorted(required_tables - tables)
 missing_columns = sorted(required_team_columns - columns)
-if missing_tables or missing_columns:
+missing_reservation_columns = sorted(required_reservation_columns - reservation_columns)
+if missing_tables or missing_columns or missing_reservation_columns:
     detail = []
     if missing_tables:
         detail.append("tables: " + ", ".join(missing_tables))
     if missing_columns:
         detail.append("teams columns: " + ", ".join(missing_columns))
+    if missing_reservation_columns:
+        detail.append("reservations columns: " + ", ".join(missing_reservation_columns))
     raise SystemExit(
         "Database is not migrated (missing " + "; ".join(detail) + "). "
-        "Apply postgres/migrations/001_hardening.sql after taking a backup."
+        "Apply the pending numbered migrations after taking a backup."
     )
 print("PostgreSQL schema: ok")
 PY
@@ -214,7 +223,7 @@ tunnel_pid=""
 cleanup() {
   trap - INT TERM EXIT
   echo
-  echo "Stopping AIML GPU reservation services..."
+  echo "Stopping OpenGPU..."
   if [[ -n "$api_pid" ]] && kill -0 "$api_pid" 2>/dev/null; then
     kill -TERM "$api_pid" 2>/dev/null || true
   fi
@@ -263,7 +272,7 @@ if [[ "$START_TUNNEL" == true ]]; then
 fi
 
 echo
-echo "AIML GPU reservation system is running."
+echo "OpenGPU is running."
 echo "API: http://$api_host:$api_port"
 if [[ "$START_TUNNEL" == true ]]; then
   echo "Public URL: https://$ngrok_domain"

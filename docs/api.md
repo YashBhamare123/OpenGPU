@@ -10,7 +10,7 @@ OpenGPU serves JSON endpoints and the static frontend from one origin. Authentic
 {"email": "person@example.edu"}
 ```
 
-Returns `202` with a generic message whether or not the enabled address exists. Approved users are limited to five generated challenges per hour.
+Returns `202` with `approved` and the public `ACCESS_CONTACT_EMAIL` as `admin_contact`. Approved users receive a code and are limited to five generated challenges per hour; unapproved users are directed to the public contact by the frontend. Private `ADMIN_EMAILS` values are never returned.
 
 ### `POST /auth/verify-code`
 
@@ -28,7 +28,7 @@ Revokes the current session when present, deletes the cookie, and returns `204`.
 
 ### `GET /me`
 
-Returns the authenticated user's ID, email, generated SSH username, display name, and provisioning state. Returns `401` without a valid enabled session.
+Returns the authenticated user's ID, email, generated SSH username, display name, provisioning state, and `is_admin` flag. Returns `401` without a valid enabled session.
 
 ### `GET /reservations`
 
@@ -70,9 +70,23 @@ Responses:
 
 Cancels the authenticated user's active or future reservation and returns `204`. Returns `404` when the reservation is missing, expired, cancelled, or belongs to someone else.
 
+## Administration
+
+Admin endpoints require a valid session whose normalized email is listed in `ADMIN_EMAILS`.
+
+- `GET /admin` serves the administration page.
+- `GET /admin/users` lists users and their enabled state; the booking UI offers enabled users.
+- `POST /admin/users` allowlists a new email and optional display name, or safely re-enables a disabled account. Already-enabled emails return `409`.
+- `GET /admin/reservations` lists current and future reservations with owner details and full IDs.
+- `POST /admin/reservations` books for the `email` supplied in the request. Its `allow_extended` flag must be `true` for durations over three hours; the admin frontend calculates this flag from the selected duration without exposing a toggle.
+- `DELETE /admin/reservations/{id}` cancels any current or future reservation.
+
+Admin creation and cancellation actions record the acting administrator in audit-event details. Overlap protection, enabled-user checks, timezone requirements, idempotency, and the one-current-or-future-reservation rule continue to apply.
+
 ## Health and frontend
 
 - `GET /` returns the web application.
+- `GET /admin` returns the admin application; its management APIs remain authorization protected.
 - `GET /health/live` returns `{"status":"ok"}`.
 - `GET /health/ready` returns readiness details or `503` for a stale/degraded scheduler.
 

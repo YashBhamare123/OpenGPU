@@ -26,7 +26,7 @@ flowchart LR
 
 ## Authentication and booking
 
-1. An approved email requests a six-digit code. The API always returns the same generic response.
+1. An email requests access. Approved addresses receive a six-digit code; unapproved addresses are directed to the configured administrator.
 2. The newest valid challenge is checked under a row lock. Successful verification stores only a hash of a random session token and sets an HTTP-only cookie.
 3. The browser loads `/me` and future reservations. Other users' reservation IDs are withheld.
 4. The first booking attempt for an unprovisioned user queues initial provisioning and returns `202`.

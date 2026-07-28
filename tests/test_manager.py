@@ -21,7 +21,7 @@ def test_password_shape():
 def test_user_storage_paths_are_stable_and_created(monkeypatch, tmp_path):
     monkeypatch.setattr(manager, "settings", replace(manager.settings, workspace_root=str(tmp_path)))
     def run_helper(command, **_kwargs):
-        assert command[-1] == "42"
+        assert command[-2:] == ["42", "2"]
         (tmp_path / "users" / "42" / "workspace").mkdir(parents=True)
         (tmp_path / "users" / "42" / "ssh-host-keys").mkdir()
         (tmp_path / "users" / "42" / "ssh-host-keys").chmod(0o700)
@@ -69,8 +69,12 @@ def test_retry_recreates_container_before_emailing_new_password(monkeypatch, tmp
     monkeypatch.setattr(manager, "random_password", lambda: "new-password")
     monkeypatch.setattr(manager, "linux_password_hash", lambda _password: "$6$new-hash")
     monkeypatch.setattr(manager, "send_credentials", lambda *args: None)
+    monkeypatch.setattr(manager.socket, "socket", lambda *args: type("Probe", (), {
+        "__enter__": lambda self: self, "__exit__": lambda self, *args: None,
+        "bind": lambda self, address: None,
+    })())
     monkeypatch.setattr(manager, "settings", replace(manager.settings, workspace_root=str(tmp_path)))
-    monkeypatch.setattr(manager, "user_storage_paths", lambda _user_id: (
+    monkeypatch.setattr(manager, "user_storage_paths", lambda _user_id, _workspace_gb=2: (
         tmp_path / "users" / "1" / "workspace",
         tmp_path / "users" / "1" / "ssh-host-keys",
     ))
@@ -78,9 +82,11 @@ def test_retry_recreates_container_before_emailing_new_password(monkeypatch, tmp
     result = manager.provision_user(1, "user@example.edu", "gpu1", 0, "gpu-user-1", "gpu-workspace-1")
     assert existing.removed
     assert captured["environment"]["TEAM_PASSWORD_HASH"] == "$6$new-hash"
+    assert captured["environment"]["WORKSPACE_GB"] == "2"
+    assert captured["environment"]["TEMP_STORAGE_GB"] == "100"
     assert captured["volumes"][str(tmp_path / "users" / "1" / "workspace")]["bind"] == "/workspace"
     assert captured["volumes"][str(tmp_path / "users" / "1" / "ssh-host-keys")]["bind"] == "/etc/ssh/host_keys"
-    assert captured["storage_opt"] == {"size": "30G"}
+    assert captured["storage_opt"] == {"size": "100G"}
     assert captured["mem_limit"] == "32g"
     assert captured["nano_cpus"] == 16_000_000_000
     assert captured["pids_limit"] == 4096
@@ -126,7 +132,7 @@ def test_initial_provisioning_can_skip_credentials_email(monkeypatch, tmp_path):
         "__enter__": lambda self: self, "__exit__": lambda self, *args: None, "bind": lambda self, address: None,
     })())
     monkeypatch.setattr(manager, "settings", replace(manager.settings, workspace_root=str(tmp_path)))
-    monkeypatch.setattr(manager, "user_storage_paths", lambda _user_id: (
+    monkeypatch.setattr(manager, "user_storage_paths", lambda _user_id, _workspace_gb=2: (
         tmp_path / "users" / "1" / "workspace",
         tmp_path / "users" / "1" / "ssh-host-keys",
     ))

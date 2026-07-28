@@ -31,9 +31,15 @@ CREATE TABLE IF NOT EXISTS reservations (
     cancelled_at TIMESTAMPTZ,
     cancellation_reason TEXT,
     idempotency_key TEXT,
+    duration_override BOOLEAN NOT NULL DEFAULT FALSE,
+    workspace_gb INTEGER NOT NULL DEFAULT 2,
+    temp_storage_gb INTEGER NOT NULL DEFAULT 100,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT reservation_storage_check CHECK (
+        workspace_gb >= 1 AND temp_storage_gb >= 1 AND workspace_gb + temp_storage_gb <= 200
+    ),
     CONSTRAINT reservation_duration_check CHECK (
-        end_time > start_time AND end_time <= start_time + INTERVAL '3 hours'
+        end_time > start_time AND (duration_override OR end_time <= start_time + INTERVAL '3 hours')
     ),
     CONSTRAINT no_overlapping_reservations EXCLUDE USING gist (
         tstzrange(start_time, end_time, '[)') WITH &&

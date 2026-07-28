@@ -1,5 +1,5 @@
 [Unit]
-Description=AIML GPU reservation scheduler
+Description=OpenGPU scheduler
 After=docker.service postgresql.service
 Requires=docker.service
 

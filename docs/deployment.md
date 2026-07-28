@@ -22,7 +22,7 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Review every value in `.env`. Required settings are the database URL, advertised and bind addresses, SMTP sender/relay, allowed browser origins, and secure-cookie policy. `WORKSPACE_ROOT` must be an absolute path on the quota-enabled XFS mount.
+Review every value in `.env`. Required settings are the database URL, advertised and bind addresses, SMTP sender/relay, allowed browser origins, secure-cookie policy, and the comma-separated `ADMIN_EMAILS` allowlist. `WORKSPACE_ROOT` must be an absolute path on the quota-enabled XFS mount.
 
 Install the root-owned storage helper and its narrowly scoped sudo rule once:
 
@@ -31,9 +31,15 @@ sudo ./scripts/configure-docker-storage-backend
 sudo ./scripts/install-storage-helper
 ```
 
-The backend script disables Docker's containerd snapshotter so `overlay2` can enforce per-container `size` storage options on XFS. It restarts Docker and can make images from the other image store temporarily unavailable, so run it before building `opengpu:ml`. The default configuration gives each persistent workspace 1 GB and each disposable container writable layer 30 GB. The helper owns workspace creation; the scheduler account does not need general write access to `WORKSPACE_ROOT`.
+The backend script disables Docker's containerd snapshotter so `overlay2` can enforce per-container `size` storage options on XFS. It restarts Docker and can make images from the other image store temporarily unavailable, so run it before building `opengpu:ml`. Reservations default to a 2 GB persistent workspace and 100 GB disposable container writable layer; administrators can adjust both up to a combined 200 GB. The helper owns workspace creation; the scheduler account does not need general write access to `WORKSPACE_ROOT`.
 
 For a fresh database, apply `postgres/init.sql`. Numbered migrations are for an existing schema and must be applied in order after a backup.
+
+Existing installations adding admin duration overrides must apply:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f postgres/migrations/003_admin_duration_override.sql
+```
 
 ## Build and validate
 

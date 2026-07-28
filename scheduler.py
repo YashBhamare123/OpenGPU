@@ -47,6 +47,12 @@ def claim_job():
                    ORDER BY r.start_time LIMIT 1),
                   (SELECT r.end_time FROM reservations r
                    WHERE r.team_id=j.team_id AND NOT r.cancelled AND r.end_time>NOW()
+                   ORDER BY r.start_time LIMIT 1),
+                  (SELECT r.workspace_gb FROM reservations r
+                   WHERE r.team_id=j.team_id AND NOT r.cancelled AND r.end_time>NOW()
+                   ORDER BY r.start_time LIMIT 1),
+                  (SELECT r.temp_storage_gb FROM reservations r
+                   WHERE r.team_id=j.team_id AND NOT r.cancelled AND r.end_time>NOW()
                    ORDER BY r.start_time LIMIT 1)
                 FROM provisioning_jobs j
                 JOIN teams t ON t.id=j.team_id
@@ -66,7 +72,8 @@ def claim_job():
         return {"job_id": job[0], "user_id": job[1], "email": str(job[2]), "port": port,
                 "username": username, "container_name": container_name, "volume_name": volume_name,
                 "legacy_volume": legacy_volume, "purpose": job[3],
-                "reservation_start": job[4], "reservation_end": job[5]}
+                "reservation_start": job[4], "reservation_end": job[5],
+                "workspace_gb": job[6] or 2, "temp_storage_gb": job[7] or 100}
     finally:
         conn.close()
 
@@ -81,6 +88,7 @@ def process_one_job():
             job["container_name"], job["volume_name"], job["legacy_volume"],
             email_credentials=job["purpose"] != "initial",
             reservation_start=job["reservation_start"], reservation_end=job["reservation_end"],
+            workspace_gb=job["workspace_gb"], temp_storage_gb=job["temp_storage_gb"],
         )
         conn = get_connection()
         try:

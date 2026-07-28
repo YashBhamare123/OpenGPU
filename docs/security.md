@@ -13,7 +13,7 @@ OpenGPU is designed for trusted institutional users sharing one GPU. It hardens 
 ## Credentials
 
 - OTPs and browser session tokens are stored only as SHA-256 hashes.
-- OTP requests use a generic response and rate limit approved users.
+- OTP requests expose only allowlist status and the public `ACCESS_CONTACT_EMAIL`; private `ADMIN_EMAILS` are never returned. Approved users are rate limited and code-verification failures remain generic.
 - Session cookies are HTTP-only, SameSite Lax, and configurable as Secure.
 - SSH passwords are generated per reservation; only their Linux password hash is retained.
 - SMTP and database credentials live outside Git in a mode-600 environment file.

@@ -4,27 +4,25 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>GPU Reservations</title>
-  <link rel="stylesheet" href="/frontend/app.css?v=22">
-  <script src="/frontend/app.js?v=22" defer></script>
+  <title>Cynaptics OpenGPU</title>
+  <link rel="icon" href="/frontend/favicon.svg?v=2" type="image/svg+xml">
+  <link rel="stylesheet" href="/frontend/app.css?v=33">
+  <script src="/frontend/app.js?v=29" defer></script>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="GPU Reservations home">
-      <span class="brand-mark">G</span>
-      <span><strong>GPU Reservations</strong><small>RTX 6000 Ada</small></span>
-    </a>
     <div id="user-menu" class="user-menu hidden">
       <span><strong id="user-name"></strong><small id="user-email"></small></span>
+      <a id="admin-link" class="button secondary hidden" href="/admin">Admin</a>
       <button id="logout" class="button ghost" type="button">Sign out</button>
     </div>
   </header>
 
   <main>
     <section id="login" class="login-panel">
-      <div class="eyebrow">Restricted access</div>
-      <h1>Reserve compute time.</h1>
-      <p>Sign in with an approved institute email.</p>
+      <div class="eyebrow">Cynaptics OpenGPU</div>
+      <h1>Sign in</h1>
+      <p>Use your approved institute email.</p>
       <div id="login-notice" class="form-notice hidden" role="alert"></div>
       <form id="email-form" class="form-stack">
         <label for="email">Email address</label>
@@ -36,11 +34,18 @@
         <input id="code" class="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required>
         <button id="code-submit" class="button primary" type="submit">Continue</button>
       </form>
+      <div id="access-request" class="access-request hidden" role="status">
+        <div class="access-request-icon" aria-hidden="true">!</div>
+        <h2>Access approval needed</h2>
+        <p>This email is not on the Cynaptics OpenGPU allowlist yet. Ask the administrator to approve it, then return here to sign in.</p>
+        <button id="retry-access" class="button secondary" type="button">Use another email</button>
+        <div id="contact-admin-row" class="contact-admin-row hidden"><span>Contact</span><span id="contact-admin"></span><button id="copy-admin-email" class="copy-email" type="button" aria-label="Copy administrator email" title="Copy email"><svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20 6-11 11-5-5"/></svg></button></div>
+      </div>
     </section>
 
     <section id="workspace" class="workspace hidden">
       <div class="page-heading">
-        <div><div class="eyebrow">Shared compute · RTX 6000 Ada</div><h1>Reserve GPU time</h1><p>Set your time below. The availability timeline updates as you adjust it.</p></div>
+        <div><div class="eyebrow">Cynaptics OpenGPU · RTX 6000 Ada</div><h1>GPU reservations</h1><p>Select a start time and duration.</p></div>
         <div class="status"><span class="status-dot"></span>GPU online</div>
       </div>
       <div id="notice" class="notice hidden" role="status" aria-live="polite">
@@ -49,10 +54,10 @@
         <button id="dismiss-notice" class="notice-close" type="button" aria-label="Dismiss message">×</button>
       </div>
       <section class="booking-composer" aria-labelledby="composer-title">
-        <div class="composer-intro"><div class="eyebrow">New reservation</div><h2 id="composer-title">Build your session</h2><p>The selected time appears live on the timeline.</p></div>
-        <div id="reservation-limit" class="reservation-limit hidden" role="status"><strong>One reservation at a time</strong><span>You already have a current or upcoming reservation. Cancel or complete it before booking another.</span></div>
+        <div class="composer-intro"><div class="eyebrow">New reservation</div><h2 id="composer-title">Select a time</h2></div>
+        <div id="reservation-limit" class="reservation-limit hidden" role="status"><strong>One reservation at a time</strong><span>Cancel your current reservation before creating another.</span></div>
         <div class="composer-fields">
-          <div class="composer-field"><span id="start-time-label">Start time</span><div class="time-entry" role="group" aria-labelledby="start-time-label"><label><span class="sr-only">Time, hour and minute</span><input id="start-time-text" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="09:00" aria-describedby="time-entry-hint"></label><div class="period-toggle" aria-label="AM or PM"><button id="period-am" type="button" data-period="AM">AM</button><button id="period-pm" type="button" data-period="PM">PM</button></div></div><small id="time-entry-hint" class="field-hint">Type any minute · ↑↓ adjusts by one minute</small></div>
+          <div class="composer-field"><span id="start-time-label">Start time</span><div class="time-entry" role="group" aria-labelledby="start-time-label"><label><span class="sr-only">Time, hour and minute</span><input id="start-time-text" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="09:00" aria-describedby="time-entry-hint"></label><div class="period-toggle" aria-label="AM or PM"><button id="period-am" type="button" data-period="AM">AM</button><button id="period-pm" type="button" data-period="PM">PM</button></div></div><small id="time-entry-hint" class="field-hint">Any minute · ↑/↓ adjusts by 1 minute</small></div>
           <div class="composer-field"><span>Duration</span><div class="duration-stepper"><button id="duration-down" type="button" aria-label="Reduce duration by 15 minutes">−</button><output id="duration-value">1 hr</output><button id="duration-up" type="button" aria-label="Increase duration by 15 minutes">+</button></div></div>
           <div id="composer-summary" class="composer-summary"><span id="composer-date">Today</span><strong id="composer-range">9:00 AM — 10:00 AM</strong><small id="composer-status">Available to reserve</small></div>
           <button id="confirm-booking" class="button primary reserve-button" type="button">Reserve GPU</button>
@@ -94,7 +99,6 @@
     <div class="dialog-copy">
       <div class="eyebrow">Review reservation</div>
       <h2 id="confirm-dialog-title">Confirm your GPU session</h2>
-      <p>Check the configuration and timing before reserving.</p>
       <dl class="configuration-summary">
         <div class="configuration-time"><dt>Date</dt><dd id="confirm-date"></dd></div>
         <div class="configuration-time"><dt>Session</dt><dd id="confirm-time"></dd></div>

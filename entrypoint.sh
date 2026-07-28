@@ -4,6 +4,14 @@ if ! id "$TEAM_NAME" >/dev/null 2>&1; then
     useradd -m -s /bin/bash "$TEAM_NAME"
 fi
 
+if [[ ! "${WORKSPACE_GB:-}" =~ ^[1-9][0-9]*$ || ! "${TEMP_STORAGE_GB:-}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Invalid container storage allocation" >&2
+    exit 1
+fi
+printf 'OPENGPU_WORKSPACE_GB=%q\nOPENGPU_TEMP_STORAGE_GB=%q\n' \
+    "$WORKSPACE_GB" "$TEMP_STORAGE_GB" > /etc/opengpu-storage.env
+chmod 0644 /etc/opengpu-storage.env
+
 # Keep SSH startup focused on the Cynaptics workspace banner instead of the
 # distribution MOTD and last-login notice.
 touch "/home/$TEAM_NAME/.hushlogin"

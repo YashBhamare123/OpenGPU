@@ -7,6 +7,7 @@ The frontend is plain HTML, CSS, and JavaScript served directly by FastAPI. Ther
 - `index.html` defines login, booking controls, timeline, notices, and confirmation/cancellation dialogs.
 - `app.css` owns the visual system, responsive behavior, timeline geometry, reservation states, and motion.
 - `app.js` owns browser state, API calls, date calculations, rendering, polling, and event handlers.
+- `admin.html`, `admin.css`, and `admin.js` provide the server-authorized admin view for user allowlisting, booking on behalf of users through the same composer/timeline/review flow, reservation-owner search, explicit duration overrides, and cancellation.
 
 The global state tracks the authenticated user, reservations, viewed date, live selection, pending confirmation, refresh timers, provisioning polling, and the reservation selected for cancellation.
 

@@ -19,7 +19,7 @@ class Settings:
     docker_image: str = os.environ.get("DOCKER_IMAGE", "opengpu:ml")
     workspace_root: str = os.environ.get("WORKSPACE_ROOT", "/var/lib/docker/opengpu-workspaces")
     storage_helper: str = os.environ.get("STORAGE_HELPER", "/usr/local/sbin/opengpu-storage-init")
-    container_storage_limit: str = os.environ.get("CONTAINER_STORAGE_LIMIT", "30G")
+    container_storage_limit: str = os.environ.get("CONTAINER_STORAGE_LIMIT", "100G")
     ssh_port_start: int = _int("SSH_PORT_START", 22001)
     ssh_port_end: int = _int("SSH_PORT_END", 32000)
     smtp_host: str = os.environ.get("SMTP_HOST", "")
@@ -39,6 +39,14 @@ class Settings:
     allowed_origins: tuple[str, ...] = tuple(
         value.strip() for value in os.environ.get("ALLOWED_ORIGINS", "").split(",") if value.strip()
     )
+    admin_emails: tuple[str, ...] = tuple(
+        value.strip().lower() for value in os.environ.get(
+            "ADMIN_EMAILS", "mc240041040@iiti.ac.in"
+        ).split(",") if value.strip()
+    )
+    access_contact_email: str = os.environ.get(
+        "ACCESS_CONTACT_EMAIL", "cynaptics@iiti.ac.in"
+    ).strip().lower()
 
 
 settings = Settings()

@@ -132,7 +132,7 @@ def rotate(args):
 
 
 def parser():
-    root = argparse.ArgumentParser(description="AIML GPU reservation administration")
+    root = argparse.ArgumentParser(description="OpenGPU administration")
     commands = root.add_subparsers(required=True)
     p = commands.add_parser("whitelist"); p.add_argument("email"); p.add_argument("--display-name"); p.set_defaults(func=whitelist)
     for name, enabled in (("enable", True), ("disable", False)):

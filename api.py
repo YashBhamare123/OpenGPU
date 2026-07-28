@@ -10,7 +10,7 @@ from pydantic import BaseModel, EmailStr, field_validator
 
 from config import settings
 from database import get_connection
-from mailer import send_otp
+from mailer import send_cancellation, send_otp
 from security import (
     generate_otp,
     generate_token,
@@ -21,7 +21,7 @@ from security import (
 )
 
 
-app = FastAPI(title="AIML GPU Reservations")
+app = FastAPI(title="OpenGPU")
 app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
 
 
@@ -55,6 +55,18 @@ class ReservationRequest(BaseModel):
         return value.astimezone(timezone.utc)
 
 
+class AdminReservationRequest(ReservationRequest):
+    email: EmailStr
+    allow_extended: bool = False
+    workspace_gb: int = 2
+    temp_storage_gb: int = 100
+
+
+class AdminUserRequest(BaseModel):
+    email: EmailStr
+    display_name: str | None = None
+
+
 def audit(cursor, event_type: str, team_id=None, details=None) -> None:
     cursor.execute(
         "INSERT INTO audit_events(team_id,event_type,details) VALUES (%s,%s,%s::jsonb)",
@@ -79,8 +91,10 @@ def current_user(session: str | None = Cookie(default=None)) -> dict:
             row = cursor.fetchone()
         if not row or not row[4]:
             raise HTTPException(status_code=401, detail="Session is invalid or expired")
-        return {"id": row[0], "email": str(row[1]), "username": row[2],
-                "display_name": row[3], "provisioning_state": row[5]}
+        email = str(row[1])
+        return {"id": row[0], "email": email, "username": row[2],
+                "display_name": row[3], "provisioning_state": row[5],
+                "is_admin": normalize_email(email) in settings.admin_emails}
     finally:
         conn.close()
 
@@ -88,6 +102,22 @@ def current_user(session: str | None = Cookie(default=None)) -> dict:
 @app.get("/")
 def frontend():
     return FileResponse("frontend/index.html")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse("frontend/favicon.svg", media_type="image/svg+xml")
+
+
+@app.get("/admin")
+def admin_frontend():
+    return FileResponse("frontend/admin.html")
+
+
+def require_admin(user=Depends(current_user)) -> dict:
+    if normalize_email(user["email"]) not in settings.admin_emails:
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    return user
 
 
 @app.post("/auth/request-code", status_code=202)
@@ -121,7 +151,9 @@ def request_code(request: EmailRequest):
         except Exception:
             # Keep the response generic and avoid exposing SMTP details.
             pass
-    return {"detail": "If the address is approved, a login code has been sent."}
+    return {"detail": "If the address is approved, a login code has been sent.",
+            "approved": bool(row),
+            "admin_contact": settings.access_contact_email or None}
 
 
 @app.post("/auth/verify-code")
@@ -199,6 +231,195 @@ def get_reservations(user=Depends(current_user)):
         conn.close()
 
 
+@app.get("/admin/users")
+def admin_users(_admin=Depends(require_admin)):
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """SELECT id,email,name,display_name,provisioning_state,enabled
+                   FROM teams ORDER BY email"""
+            )
+            rows = cursor.fetchall()
+        return [{"id": row[0], "email": str(row[1]), "username": row[2],
+                 "display_name": row[3], "provisioning_state": row[4],
+                 "enabled": row[5]} for row in rows]
+    finally:
+        conn.close()
+
+
+@app.post("/admin/users", status_code=201)
+def admin_whitelist_user(request: AdminUserRequest, admin=Depends(require_admin)):
+    email = normalize_email(str(request.email))
+    display_name = request.display_name.strip() if request.display_name else None
+    if display_name == "":
+        display_name = None
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT id,enabled FROM teams WHERE email=%s FOR UPDATE", (email,))
+            existing = cursor.fetchone()
+            if existing and existing[1]:
+                raise HTTPException(status_code=409, detail="User is already allowlisted")
+            if existing:
+                user_id = existing[0]
+                cursor.execute(
+                    """UPDATE teams SET enabled=TRUE,display_name=COALESCE(%s,display_name),
+                         provisioning_state=CASE WHEN container_name IS NULL THEN 'unprovisioned' ELSE 'ready' END,
+                         provisioning_error=NULL WHERE id=%s RETURNING name,display_name,provisioning_state""",
+                    (display_name, user_id),
+                )
+                username, saved_name, provisioning_state = cursor.fetchone()
+                action = "reenabled"
+            else:
+                cursor.execute("SELECT nextval(pg_get_serial_sequence('teams','id'))")
+                user_id = cursor.fetchone()[0]
+                username = f"gpu{user_id}"
+                cursor.execute(
+                    """INSERT INTO teams(id,name,email,display_name,enabled,provisioning_state)
+                       VALUES (%s,%s,%s,%s,TRUE,'unprovisioned')""",
+                    (user_id, username, email, display_name),
+                )
+                saved_name = display_name
+                provisioning_state = "unprovisioned"
+                action = "created"
+            audit(cursor, "admin_user_whitelisted", user_id,
+                  {"whitelisted_by_admin": admin["id"], "action": action})
+        conn.commit()
+        return {"id": user_id, "email": email, "username": username,
+                "display_name": saved_name, "enabled": True,
+                "provisioning_state": provisioning_state}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except psycopg.errors.UniqueViolation as exc:
+        conn.rollback()
+        raise HTTPException(status_code=409, detail="Email or generated username is already in use") from exc
+    finally:
+        conn.close()
+
+
+@app.get("/admin/reservations")
+def admin_reservations(_admin=Depends(require_admin)):
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """SELECT r.id,t.email,t.display_name,t.name,r.start_time,r.end_time,r.duration_override,
+                          r.workspace_gb,r.temp_storage_gb
+                   FROM reservations r JOIN teams t ON t.id=r.team_id
+                   WHERE NOT r.cancelled AND r.end_time>NOW() ORDER BY r.start_time"""
+            )
+            rows = cursor.fetchall()
+        return [{"id": row[0], "email": str(row[1]), "display_name": row[2],
+                 "username": row[3], "start_time": row[4], "end_time": row[5],
+                 "duration_override": row[6], "workspace_gb": row[7],
+                 "temp_storage_gb": row[8]} for row in rows]
+    finally:
+        conn.close()
+
+
+@app.post("/admin/reservations")
+def admin_create_reservation(request: AdminReservationRequest, admin=Depends(require_admin),
+                             idempotency_key: str = Header(min_length=8, max_length=128)):
+    email = normalize_email(str(request.email))
+    if request.start_time < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Reservation cannot start in the past")
+    if request.end_time <= request.start_time:
+        raise HTTPException(status_code=400, detail="Reservation must end after it starts")
+    if request.end_time > request.start_time + timedelta(hours=3) and not request.allow_extended:
+        raise HTTPException(status_code=400, detail="Extended-duration authorization is required for bookings over three hours")
+    if request.workspace_gb < 1 or request.temp_storage_gb < 1 or request.workspace_gb + request.temp_storage_gb > 200:
+        raise HTTPException(status_code=400, detail="Workspace and temporary storage must each be at least 1 GB and total no more than 200 GB")
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id,enabled FROM teams WHERE email=%s FOR UPDATE", (email,)
+            )
+            target = cursor.fetchone()
+            if not target or not target[1]:
+                raise HTTPException(status_code=404, detail="Approved user not found")
+            target_id = target[0]
+            cursor.execute(
+                "SELECT id,start_time,end_time,workspace_gb,temp_storage_gb FROM reservations WHERE team_id=%s AND idempotency_key=%s",
+                (target_id, idempotency_key),
+            )
+            existing = cursor.fetchone()
+            if existing:
+                if (existing[1] != request.start_time or existing[2] != request.end_time
+                        or existing[3] != request.workspace_gb or existing[4] != request.temp_storage_gb):
+                    raise HTTPException(status_code=409, detail="Idempotency key was used for another request")
+                return {"id": existing[0], "start_time": existing[1], "end_time": existing[2]}
+            cursor.execute(
+                """INSERT INTO reservations(team_id,start_time,end_time,idempotency_key,duration_override,
+                                              workspace_gb,temp_storage_gb)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id,start_time,end_time""",
+                (target_id, request.start_time, request.end_time, idempotency_key, request.allow_extended,
+                 request.workspace_gb, request.temp_storage_gb),
+            )
+            row = cursor.fetchone()
+            cursor.execute(
+                """INSERT INTO provisioning_jobs(team_id,purpose) VALUES (%s,'reservation')
+                   ON CONFLICT(team_id) DO UPDATE SET state='pending',purpose='reservation',attempts=0,
+                     available_at=NOW(),last_error=NULL,updated_at=NOW()""",
+                (target_id,),
+            )
+            cursor.execute(
+                "UPDATE teams SET last_booking_at=NOW(),provisioning_state='pending',provisioning_error=NULL WHERE id=%s",
+                (target_id,),
+            )
+            details = {"reservation_id": row[0], "created_by_admin": admin["id"],
+                       "duration_override": request.allow_extended,
+                       "workspace_gb": request.workspace_gb, "temp_storage_gb": request.temp_storage_gb}
+            audit(cursor, "reservation_created", target_id, details)
+            audit(cursor, "credential_rotation_requested", target_id, details)
+        conn.commit()
+        return {"id": row[0], "start_time": row[1], "end_time": row[2]}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except psycopg.errors.ExclusionViolation:
+        conn.rollback()
+        raise HTTPException(status_code=409, detail="The requested time overlaps another reservation")
+    except psycopg.errors.CheckViolation as exc:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail="Invalid reservation time or duration") from exc
+    except psycopg.Error as exc:
+        conn.rollback()
+        raise HTTPException(status_code=409, detail="Reservation conflicts with an existing booking") from exc
+    finally:
+        conn.close()
+
+
+@app.delete("/admin/reservations/{reservation_id}", status_code=204)
+def admin_cancel_reservation(reservation_id: int, admin=Depends(require_admin)):
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """UPDATE reservations r SET cancelled=TRUE,cancelled_at=NOW(),
+                     cancellation_reason='cancelled by administrator'
+                   FROM teams t WHERE r.id=%s AND t.id=r.team_id
+                     AND NOT r.cancelled AND r.end_time>NOW()
+                   RETURNING r.team_id,t.email,r.start_time,r.end_time""",
+                (reservation_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Active or future reservation not found")
+            audit(cursor, "reservation_cancelled", row[0],
+                  {"reservation_id": reservation_id, "cancelled_by_admin": admin["id"]})
+        conn.commit()
+        try:
+            send_cancellation(str(row[1]), row[2], row[3])
+        except Exception:
+            # Cancellation is authoritative even if the SMTP relay is unavailable.
+            pass
+    finally:
+        conn.close()
+
+
 @app.post("/reservations")
 def create_reservation(request: ReservationRequest, user=Depends(current_user),
                        idempotency_key: str = Header(min_length=8, max_length=128)):
@@ -221,8 +442,8 @@ def create_reservation(request: ReservationRequest, user=Depends(current_user),
                     raise HTTPException(status_code=409, detail="Idempotency key was used for another request")
                 return {"id": existing[0], "start_time": existing[1], "end_time": existing[2]}
             cursor.execute(
-                """INSERT INTO reservations(team_id,start_time,end_time,idempotency_key)
-                   VALUES (%s,%s,%s,%s) RETURNING id,start_time,end_time""",
+                """INSERT INTO reservations(team_id,start_time,end_time,idempotency_key,workspace_gb,temp_storage_gb)
+                   VALUES (%s,%s,%s,%s,2,100) RETURNING id,start_time,end_time""",
                 (user["id"], request.start_time, request.end_time, idempotency_key),
             )
             row = cursor.fetchone()
@@ -263,13 +484,20 @@ def cancel_reservation(reservation_id: int, user=Depends(current_user)):
         with conn.cursor() as cursor:
             cursor.execute(
                 """UPDATE reservations SET cancelled=TRUE,cancelled_at=NOW(),cancellation_reason='cancelled by user'
-                   WHERE id=%s AND team_id=%s AND NOT cancelled AND end_time>NOW() RETURNING id""",
+                   WHERE id=%s AND team_id=%s AND NOT cancelled AND end_time>NOW()
+                   RETURNING id,start_time,end_time""",
                 (reservation_id, user["id"]),
             )
-            if not cursor.fetchone():
+            row = cursor.fetchone()
+            if not row:
                 raise HTTPException(status_code=404, detail="Active or future reservation not found")
             audit(cursor, "reservation_cancelled", user["id"], {"reservation_id": reservation_id})
         conn.commit()
+        try:
+            send_cancellation(user["email"], row[1], row[2])
+        except Exception:
+            # Cancellation is authoritative even if the SMTP relay is unavailable.
+            pass
     finally:
         conn.close()
 

@@ -11,7 +11,7 @@ helper=/usr/local/sbin/opengpu-storage-init
 sudoers_file=/etc/sudoers.d/opengpu-storage
 
 install -m 0755 -o root -g root "$project_dir/scripts/opengpu-storage-init" "$helper"
-printf '%s ALL=(root) NOPASSWD: %s [0-9]*\n' "$SUDO_USER" "$helper" > "$sudoers_file"
+printf '%s ALL=(root) NOPASSWD: %s [0-9]* [0-9]*\n' "$SUDO_USER" "$helper" > "$sudoers_file"
 chmod 0440 "$sudoers_file"
 visudo -cf "$sudoers_file"
 

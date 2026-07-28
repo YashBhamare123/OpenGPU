@@ -32,6 +32,9 @@ test-results/
 dist/
 build/
 
+# Local visual previews
+scripts/preview-stacked-banner.sh
+
 # Editors and operating systems
 .idea/
 .vscode/

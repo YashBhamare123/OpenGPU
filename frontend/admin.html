@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Cynaptics OpenGPU Admin</title>
+  <link rel="icon" href="/frontend/favicon.svg?v=2" type="image/svg+xml">
+  <link rel="stylesheet" href="/frontend/app.css?v=33">
+  <link rel="stylesheet" href="/frontend/admin.css?v=6">
+  <script src="/frontend/admin.js?v=10" defer></script>
+</head>
+<body>
+  <header id="admin-topbar" class="topbar hidden">
+    <div class="user-menu">
+      <span><strong id="admin-name">Cynaptics OpenGPU Admin</strong><small id="admin-email"></small></span>
+      <a class="button secondary" href="/">User view</a>
+      <button id="logout" class="button ghost" type="button">Sign out</button>
+    </div>
+  </header>
+  <main id="admin-workspace" class="workspace hidden">
+    <div class="page-heading">
+      <div><div class="eyebrow">Cynaptics OpenGPU · Administration</div><h1>Reservation control</h1><p>Book GPU time for approved users and manage upcoming reservations.</p></div>
+      <div class="status"><span class="status-dot"></span>Admin access</div>
+    </div>
+    <div id="admin-notice" class="notice hidden" role="status" aria-live="polite">
+      <span class="notice-icon" aria-hidden="true"></span><div><strong id="notice-title"></strong><p id="notice-message"></p></div>
+      <button id="dismiss-notice" class="notice-close" type="button" aria-label="Dismiss message">×</button>
+    </div>
+    <section class="booking-composer whitelist-composer" aria-labelledby="whitelist-title">
+      <div class="composer-intro"><div class="eyebrow">Access control</div><h2 id="whitelist-title">Allowlist a user</h2></div>
+      <form id="whitelist-form" class="whitelist-form">
+        <label class="admin-field"><span>Email address</span><input id="whitelist-email" type="email" placeholder="person@iiti.ac.in" required></label>
+        <label class="admin-field"><span>Display name <small>(optional)</small></span><input id="whitelist-name" type="text" autocomplete="name"></label>
+        <button id="whitelist-submit" class="button primary" type="submit">Allowlist user</button>
+      </form>
+    </section>
+    <section class="booking-composer admin-composer" aria-labelledby="admin-booking-title">
+      <div class="composer-intro"><div class="eyebrow">Book on behalf</div><h2 id="admin-booking-title">Create reservation</h2></div>
+      <div class="admin-target-row"><label class="admin-field admin-email-field"><span>Approved user email</span><input id="target-email" type="email" autocomplete="off" placeholder="person@iiti.ac.in" required></label></div>
+      <details class="admin-advanced"><summary>Advanced</summary><div class="admin-storage-fields"><label class="admin-field"><span>Workspace <small>(GB)</small></span><input id="workspace-gb" type="number" min="1" max="199" step="1" value="2" required></label><label class="admin-field"><span>Temporary storage <small>(GB)</small></span><input id="temp-storage-gb" type="number" min="1" max="199" step="1" value="100" required></label><div id="storage-total-box" class="storage-total"><span>Combined storage</span><strong id="storage-total">102 / 200 GB</strong></div></div></details>
+      <div class="composer-fields">
+        <div class="composer-field"><span id="admin-start-time-label">Start time</span><div class="time-entry" role="group" aria-labelledby="admin-start-time-label"><label><span class="sr-only">Time, hour and minute</span><input id="admin-start-time-text" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="09:00"></label><div class="period-toggle" aria-label="AM or PM"><button id="admin-period-am" type="button" data-period="AM">AM</button><button id="admin-period-pm" type="button" data-period="PM">PM</button></div></div><small class="field-hint">Any minute · ↑/↓ adjusts by 1 minute</small></div>
+        <div class="composer-field"><span>Duration</span><div class="duration-stepper"><button id="admin-duration-down" type="button" aria-label="Reduce duration by 15 minutes">−</button><output id="admin-duration-value">1 hr</output><button id="admin-duration-up" type="button" aria-label="Increase duration by 15 minutes">+</button></div></div>
+        <div id="admin-composer-summary" class="composer-summary"><span id="admin-composer-date">Today</span><strong id="admin-composer-range">9:00 AM — 10:00 AM</strong><small id="admin-composer-status">Available to reserve</small></div>
+        <button id="admin-confirm-booking" class="button primary reserve-button" type="button">Reserve GPU</button>
+      </div>
+      <p id="admin-selection-error" class="inline-error hidden"></p>
+    </section>
+    <section class="schedule" aria-label="GPU availability calendar">
+      <header class="schedule-header"><div class="date-control"><button id="admin-previous-day" class="day-arrow" type="button" aria-label="Previous week">←</button><div class="active-date"><span id="admin-day-context">Today</span><h2 id="admin-calendar-date"></h2></div><button id="admin-next-day" class="day-arrow" type="button" aria-label="Next week">→</button></div><button id="admin-return-today" class="button secondary hidden" type="button">Return to today</button></header>
+      <nav id="admin-day-strip" class="day-strip" aria-label="Browse days"></nav>
+      <div class="availability-key"><span><i class="key-open"></i>Available</span><span><i class="key-busy"></i>Unavailable</span><span><i class="key-preview"></i>Admin selection</span></div>
+      <div id="admin-timeline-scroller" class="horizontal-calendar"><div id="admin-timeline" class="timeline" aria-label="Daily availability timeline"></div></div>
+    </section>
+    <section class="schedule admin-reservations" aria-labelledby="admin-reservations-title">
+      <header class="schedule-header admin-list-header"><div class="active-date"><span>Cancellation</span><h2 id="admin-reservations-title">Current and upcoming reservations</h2></div><label class="reservation-search"><span class="sr-only">Search reservations by email or name</span><input id="reservation-search" type="search" placeholder="Search email or name"></label><button id="refresh-admin" class="button secondary" type="button">Refresh</button></header>
+      <div id="admin-reservation-list" class="admin-reservation-list"></div>
+    </section>
+  </main>
+  <main id="admin-denied" class="login-panel hidden">
+    <div class="eyebrow">Cynaptics OpenGPU</div><h1>Admin access required</h1><p id="denied-message">Sign in with an administrator account.</p><a class="button primary" href="/">Return to sign in</a>
+  </main>
+  <dialog id="admin-cancel-dialog"><div class="dialog-copy"><h2>Cancel reservation?</h2><p id="admin-cancel-copy"></p></div><div class="dialog-actions"><button id="admin-keep-reservation" class="button secondary" type="button">Keep it</button><button id="admin-confirm-cancel" class="button danger" type="button">Cancel reservation</button></div></dialog>
+  <dialog id="admin-confirm-dialog" class="confirm-dialog"><div class="dialog-copy"><div class="eyebrow">Review reservation</div><h2>Confirm GPU session</h2><dl class="configuration-summary"><div class="configuration-time"><dt>User</dt><dd id="admin-confirm-user"></dd></div><div class="configuration-time"><dt>Date</dt><dd id="admin-confirm-date"></dd></div><div class="configuration-time"><dt>Session</dt><dd id="admin-confirm-time"></dd></div><div class="configuration-time"><dt>Storage</dt><dd id="admin-confirm-storage"></dd></div><div><dt>GPU</dt><dd>NVIDIA RTX A6000<small>48 GB VRAM</small></dd></div><div><dt>CPU</dt><dd>16 cores</dd></div><div><dt>Memory</dt><dd>32 GB RAM</dd></div></dl></div><div class="dialog-actions"><button id="admin-edit-booking" class="button secondary" type="button">Go back</button><button id="admin-submit-booking" class="button primary" type="button">Confirm reservation</button></div></dialog>
+</body>
+</html>
