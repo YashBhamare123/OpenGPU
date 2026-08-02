@@ -16,8 +16,8 @@ def test_provisioning_notice_loads_until_ssh_credentials_are_sent():
 def test_frontend_asset_version_is_current():
     html = Path("frontend/index.html").read_text()
 
-    assert 'app.css?v=33' in html
-    assert 'app.js?v=29' in html
+    assert 'app.css?v=37' in html
+    assert 'app.js?v=31' in html
 
 
 def test_status_panels_use_thin_left_borders():
@@ -25,6 +25,21 @@ def test_status_panels_use_thin_left_borders():
 
     assert "border-left-width:1px" in stylesheet
     assert "border-left-width:0" not in stylesheet
+
+
+def test_dark_mode_is_shared_and_persistent():
+    user_html = Path("frontend/index.html").read_text()
+    admin_html = Path("frontend/admin.html").read_text()
+    javascript = Path("frontend/theme.js").read_text()
+    stylesheet = Path("frontend/app.css").read_text()
+
+    for html in (user_html, admin_html):
+        assert 'id="theme-toggle"' in html
+        assert 'theme.js?v=1' in html
+        assert 'app.css?v=37' in html
+    assert 'localStorage.getItem("opengpu-theme")' in javascript
+    assert 'root.dataset.theme' in javascript
+    assert ':root[data-theme="dark"]' in stylesheet
 
 
 def test_cross_midnight_reservations_are_allowed_and_render_as_continuations():
@@ -47,7 +62,7 @@ def test_admin_frontend_has_server_backed_management_controls():
     assert 'id="whitelist-email"' in html
     assert 'id="allow-extended"' not in html
     assert "allow_extended:allowExtended" in javascript
-    assert "selection.end-selection.start>3*60*60*1000" in javascript
+    assert "selection.end-selection.start>state.reservationLimitMinutes*60*1000" in javascript
     assert 'id="admin-start-time-text"' in html
     assert 'id="admin-duration-value"' in html
     assert 'id="admin-day-strip"' in html

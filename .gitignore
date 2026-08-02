@@ -34,6 +34,12 @@ build/
 
 # Local visual previews
 scripts/preview-stacked-banner.sh
+# Host-specific, destructive storage migration utility
+scripts/migrate-docker-storage-to-home
+
+# Local coding-agent state
+.agents/
+.codex/
 
 # Editors and operating systems
 .idea/

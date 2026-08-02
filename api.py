@@ -1,10 +1,12 @@
 import hmac
 import json
+from html import escape
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 import psycopg
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, field_validator
 
@@ -99,14 +101,22 @@ def current_user(session: str | None = Cookie(default=None)) -> dict:
         conn.close()
 
 
-@app.get("/")
-def frontend():
-    return FileResponse("frontend/index.html")
+@app.get("/", response_class=HTMLResponse)
+def frontend(request: Request):
+    base_url = settings.public_base_url or str(request.base_url).rstrip("/")
+    html = Path("frontend/index.html").read_text(encoding="utf-8")
+    html = html.replace("__PUBLIC_URL__", escape(base_url, quote=True))
+    return HTMLResponse(html)
 
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
     return FileResponse("frontend/favicon.svg", media_type="image/svg+xml")
+
+
+@app.get("/social-card.png", include_in_schema=False)
+def social_card():
+    return FileResponse("image.png", media_type="image/png")
 
 
 @app.get("/admin")
@@ -208,7 +218,7 @@ def logout(response: Response, session: str | None = Cookie(default=None)):
 
 @app.get("/me")
 def me(user=Depends(current_user)):
-    return user
+    return {**user, "reservation_limit_minutes": settings.reservation_limit_minutes}
 
 
 @app.get("/reservations")
@@ -327,8 +337,12 @@ def admin_create_reservation(request: AdminReservationRequest, admin=Depends(req
         raise HTTPException(status_code=400, detail="Reservation cannot start in the past")
     if request.end_time <= request.start_time:
         raise HTTPException(status_code=400, detail="Reservation must end after it starts")
-    if request.end_time > request.start_time + timedelta(hours=3) and not request.allow_extended:
-        raise HTTPException(status_code=400, detail="Extended-duration authorization is required for bookings over three hours")
+    if (request.end_time > request.start_time + timedelta(minutes=settings.reservation_limit_minutes)
+            and not request.allow_extended):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Extended-duration authorization is required for bookings over {settings.reservation_limit_minutes} minutes",
+        )
     if request.workspace_gb < 1 or request.temp_storage_gb < 1 or request.workspace_gb + request.temp_storage_gb > 200:
         raise HTTPException(status_code=400, detail="Workspace and temporary storage must each be at least 1 GB and total no more than 200 GB")
     conn = get_connection()
@@ -423,6 +437,15 @@ def admin_cancel_reservation(reservation_id: int, admin=Depends(require_admin)):
 @app.post("/reservations")
 def create_reservation(request: ReservationRequest, user=Depends(current_user),
                        idempotency_key: str = Header(min_length=8, max_length=128)):
+    if request.start_time < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Reservation cannot start in the past")
+    if request.end_time <= request.start_time:
+        raise HTTPException(status_code=400, detail="Reservation must end after it starts")
+    if request.end_time > request.start_time + timedelta(minutes=settings.reservation_limit_minutes):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Reservations can be up to {settings.reservation_limit_minutes} minutes",
+        )
     conn = get_connection()
     try:
         with conn.cursor() as cursor:

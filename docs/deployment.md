@@ -35,10 +35,12 @@ The backend script disables Docker's containerd snapshotter so `overlay2` can en
 
 For a fresh database, apply `postgres/init.sql`. Numbered migrations are for an existing schema and must be applied in order after a backup.
 
-Existing installations adding admin duration overrides must apply:
+Existing installations must apply pending migrations in numerical order, including:
 
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f postgres/migrations/003_admin_duration_override.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f postgres/migrations/004_reservation_storage.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f postgres/migrations/005_configurable_duration_limit.sql
 ```
 
 ## Build and validate

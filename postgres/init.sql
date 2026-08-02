@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS reservations (
         workspace_gb >= 1 AND temp_storage_gb >= 1 AND workspace_gb + temp_storage_gb <= 200
     ),
     CONSTRAINT reservation_duration_check CHECK (
-        end_time > start_time AND (duration_override OR end_time <= start_time + INTERVAL '3 hours')
+        end_time > start_time
     ),
     CONSTRAINT no_overlapping_reservations EXCLUDE USING gist (
         tstzrange(start_time, end_time, '[)') WITH &&

@@ -17,7 +17,7 @@ The current deployment profile is an NVIDIA A6000 with 48 GB VRAM, CUDA 12.8, 16
 
 - Email allowlist and one-time-code authentication
 - View-only horizontal availability timeline
-- Conflict-safe, idempotent reservations of up to three hours
+- Conflict-safe, idempotent reservations with an environment-configured standard duration limit
 - One current or future reservation per user
 - Fresh SSH password for every reservation
 - GPU container start and removal tied to reservation state

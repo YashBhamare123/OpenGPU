@@ -17,7 +17,7 @@ The global state tracks the authenticated user, reservations, viewed date, live 
 - Login requests and verifies an emailed code, then reloads user and reservation state.
 - The seven-day strip changes the viewed day; top arrows move by week.
 - The 24-hour timeline renders availability, other reservations, the user's reservation, and the live selection.
-- Start time accepts any minute. Duration changes in 15-minute increments from 15 minutes to three hours.
+- Start time accepts any minute. Duration changes in 15-minute increments from 15 minutes to the `RESERVATION_LIMIT_MINUTES` value returned by `/me`.
 - The selection is validated in the browser before the confirmation dialog opens; PostgreSQL remains authoritative.
 - Reservation submission sends a unique `Idempotency-Key` and polls `/me` while provisioning rotates credentials.
 - Reservations refresh every 30 seconds. A `401` returns the UI to login.

@@ -40,14 +40,14 @@ def user(conn, email="a@example.edu"):
     ).fetchone()[0]
 
 
-def test_valid_and_overlong_reservations(conn):
+def test_valid_and_non_positive_reservations(conn):
     uid = user(conn)
     start = datetime.now(timezone.utc) + timedelta(hours=1)
     conn.execute("INSERT INTO reservations(team_id,start_time,end_time) VALUES (%s,%s,%s)",
-                 (uid, start, start + timedelta(hours=3)))
+                 (uid, start, start + timedelta(hours=8)))
     with pytest.raises(psycopg.errors.CheckViolation):
         conn.execute("INSERT INTO reservations(team_id,start_time,end_time,cancelled) VALUES (%s,%s,%s,TRUE)",
-                     (uid, start + timedelta(hours=4), start + timedelta(hours=8)))
+                     (uid, start + timedelta(hours=4), start + timedelta(hours=4)))
 
 
 def test_explicit_admin_override_allows_extended_reservation(conn):

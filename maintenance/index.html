@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Maintenance · Cynaptics OpenGPU</title>
+  <meta name="description" content="Cynaptics OpenGPU is temporarily unavailable for maintenance.">
+  <style>
+    :root{--ink:#102532;--muted:#617783;--line:#d5e3eb;--line-strong:#b7cedb;--paper:#fff;--canvas:#f3f9fc;--soft:#edf7fc;--accent:#25b5ff;--accent-dark:#079be8;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--canvas);font-synthesis:none}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;font-size:14px;line-height:1.45}button{font:inherit}
+    main{width:min(1180px,calc(100% - 48px));min-height:100vh;margin:0 auto;padding:48px 0 72px;display:grid;place-items:center}
+    .panel{width:min(540px,100%);padding:42px;border:1px solid var(--line);background:var(--paper);box-shadow:8px 8px 0 #dfe5df}
+    .eyebrow{margin-bottom:10px;color:var(--accent);font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+    h1{margin:0 0 13px;font-size:clamp(34px,6vw,56px);line-height:1.02;letter-spacing:-.045em;font-weight:720}
+    p{margin:0;color:var(--muted);font-size:16px}.status{display:flex;align-items:center;gap:10px;margin-top:28px;padding:14px 15px;border:1px solid var(--line);background:var(--soft);color:var(--ink);font-size:12px;font-weight:700}.status-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgb(37 181 255/.15);animation:pulse 1.7s ease-in-out infinite}
+    .note{margin-top:18px;color:var(--muted);font-size:12px}.theme-toggle{position:fixed;top:14px;right:max(18px,calc((100vw - 1180px)/2));display:grid;place-items:center;width:40px;height:40px;padding:0;border:1px solid var(--line-strong);border-radius:50%;background:var(--paper);color:var(--ink);box-shadow:3px 3px 0 rgb(16 37 50/.12);cursor:pointer}.theme-toggle svg{grid-area:1/1;width:19px;height:19px}.theme-sun{display:none}[data-theme=dark] .theme-moon{display:none}[data-theme=dark] .theme-sun{display:block}
+    @keyframes pulse{50%{opacity:.38;transform:scale(.82)}}
+    :root[data-theme=dark]{--ink:#e8f4fa;--muted:#8fa8b6;--line:#203947;--line-strong:#315366;--paper:#0d1c26;--canvas:#07131c;--soft:#132a37;--accent:#42c5ff;--accent-dark:#0b86c7;color-scheme:dark}
+    [data-theme=dark] body{background:radial-gradient(circle at 78% -10%,rgb(37 181 255/.09),transparent 34%),var(--canvas)}[data-theme=dark] .panel{box-shadow:8px 8px 0 #030a0f}[data-theme=dark] .theme-toggle{box-shadow:3px 3px 0 #02080c}
+    @media(max-width:600px){main{width:min(100% - 30px,540px)}.panel{padding:30px}.theme-toggle{top:10px;right:12px;width:38px;height:38px}}
+    @media(prefers-reduced-motion:reduce){.status-dot{animation:none}}
+  </style>
+  <script>
+    (()=>{let saved=null;try{saved=localStorage.getItem('opengpu-theme')}catch{};document.documentElement.dataset.theme=saved|| (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})();
+  </script>
+</head>
+<body>
+  <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle color theme">
+    <svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.2A8.4 8.4 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"/></svg>
+    <svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"/></svg>
+  </button>
+  <main>
+    <section class="panel" aria-labelledby="maintenance-title">
+      <div class="eyebrow">Cynaptics OpenGPU</div>
+      <h1 id="maintenance-title">Under maintenance</h1>
+      <p>We’re making a few infrastructure improvements. GPU reservations and active workspace access will return shortly.</p>
+      <div class="status" role="status"><span class="status-dot" aria-hidden="true"></span>Maintenance in progress</div>
+      <div class="note">You can leave this page open and try again in a little while.</div>
+    </section>
+  </main>
+  <script>
+    document.getElementById('theme-toggle').addEventListener('click',()=>{const theme=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=theme;try{localStorage.setItem('opengpu-theme',theme)}catch{}});
+  </script>
+</body>
+</html>

@@ -43,7 +43,7 @@ erDiagram
 
 ## Enforced reservation rules
 
-- `end_time` must be after `start_time`. It may be more than three hours later only when an administrator explicitly sets `duration_override` for that reservation.
+- `end_time` must be after `start_time`. The authenticated API enforces `RESERVATION_LIMIT_MINUTES` for standard bookings and records `duration_override` for administrator-authorized longer reservations.
 - Non-cancelled ranges cannot overlap globally; adjacent half-open ranges are allowed.
 - A trigger rejects reservations beginning in the past.
 - The owning user must exist and be enabled.

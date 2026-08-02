@@ -93,6 +93,8 @@ if settings.ssh_port_start < 1024 or settings.ssh_port_end > 65535:
     raise SystemExit("SSH port range must stay between 1024 and 65535")
 if settings.ssh_port_start > settings.ssh_port_end:
     raise SystemExit("SSH_PORT_START must be less than or equal to SSH_PORT_END")
+if settings.reservation_limit_minutes < 15 or settings.reservation_limit_minutes % 15:
+    raise SystemExit("RESERVATION_LIMIT_MINUTES must be at least 15 and divisible by 15")
 if missing:
     raise SystemExit("Missing required .env variables: " + ", ".join(missing))
 if settings.cookie_secure and not all(origin.startswith("https://") for origin in settings.allowed_origins):

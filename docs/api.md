@@ -78,7 +78,7 @@ Admin endpoints require a valid session whose normalized email is listed in `ADM
 - `GET /admin/users` lists users and their enabled state; the booking UI offers enabled users.
 - `POST /admin/users` allowlists a new email and optional display name, or safely re-enables a disabled account. Already-enabled emails return `409`.
 - `GET /admin/reservations` lists current and future reservations with owner details and full IDs.
-- `POST /admin/reservations` books for the `email` supplied in the request. Its `allow_extended` flag must be `true` for durations over three hours; the admin frontend calculates this flag from the selected duration without exposing a toggle.
+- `POST /admin/reservations` books for the `email` supplied in the request. Its `allow_extended` flag must be `true` above `RESERVATION_LIMIT_MINUTES`; the admin frontend calculates this flag from the configured limit without exposing a toggle.
 - `DELETE /admin/reservations/{id}` cancels any current or future reservation.
 
 Admin creation and cancellation actions record the acting administrator in audit-event details. Overlap protection, enabled-user checks, timezone requirements, idempotency, and the one-current-or-future-reservation rule continue to apply.

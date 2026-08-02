@@ -30,6 +30,7 @@ class Settings:
     session_hours: int = _int("SESSION_HOURS", 12)
     otp_minutes: int = _int("OTP_MINUTES", 10)
     otp_max_attempts: int = _int("OTP_MAX_ATTEMPTS", 5)
+    reservation_limit_minutes: int = _int("RESERVATION_LIMIT_MINUTES", 120)
     poll_interval: int = _int("POLL_INTERVAL", 5)
     memory_limit: str = os.environ.get("CONTAINER_MEMORY", "32g")
     cpu_limit: int = _int("CONTAINER_CPUS", 16)
@@ -47,6 +48,10 @@ class Settings:
     access_contact_email: str = os.environ.get(
         "ACCESS_CONTACT_EMAIL", "cynaptics@iiti.ac.in"
     ).strip().lower()
+    public_base_url: str = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
 
 
 settings = Settings()
+
+if settings.reservation_limit_minutes < 15 or settings.reservation_limit_minutes % 15:
+    raise ValueError("RESERVATION_LIMIT_MINUTES must be at least 15 and divisible by 15")
