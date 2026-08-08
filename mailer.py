@@ -38,13 +38,13 @@ def send_email(recipient: str, subject: str, body: str) -> None:
 
 def send_otp(email: str, code: str) -> None:
     plain = (
-        "Your Cynaptics OpenGPU login code\n\n"
+        "Your login code\n\n"
         f"{code}\n\n"
         f"This code expires in {settings.otp_minutes} minutes and can only be used once.\n"
         "If you did not request this code, ignore this email.\n\n"
         "This automated account-security message was sent by Cynaptics OpenGPU.\n"
     )
-    message = _message(email, "Cynaptics OpenGPU | Your sign-in code")
+    message = _message(email, "Your sign-in code")
     message.set_content(plain)
     message.add_alternative(
         f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cynaptics OpenGPU sign-in code</title></head><body style="margin:0;background:#f3f9fc;color:#102532;font-family:Arial,sans-serif">
@@ -84,14 +84,14 @@ def send_credentials(email: str, username: str, password: str, port: int,
         schedule_text = ""
 
     plain = (
-        "Your Cynaptics OpenGPU access is ready.\n\n"
+        "Your SSH access is ready.\n\n"
         f"{schedule_text}"
         f"SSH command:\n{command}\n\n"
         f"Password:\n{password}\n\n"
         "This password is valid only for this reservation.\n\n"
         "This automated reservation message was sent by Cynaptics OpenGPU.\n"
     )
-    message = _message(email, f"Cynaptics OpenGPU | SSH access for {reservation_date}")
+    message = _message(email, f"SSH access for {reservation_date}")
     message.set_content(plain)
     message.add_alternative(
         f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cynaptics OpenGPU SSH access</title></head><body style="margin:0;background:#f3f9fc;color:#102532;font-family:Arial,sans-serif">
@@ -117,12 +117,12 @@ def send_cancellation(email: str, reservation_start: datetime,
     reservation_date = start.strftime("%A, %d %B %Y")
     reservation_time = f'{start.strftime("%I:%M %p").lstrip("0")} – {end.strftime("%I:%M %p").lstrip("0")} {start.tzname() or ""}'.strip()
     plain = (
-        "Your Cynaptics OpenGPU reservation has been cancelled.\n\n"
+        "Your reservation has been cancelled.\n\n"
         f"Reservation: {reservation_date}, {reservation_time}\n\n"
         "This time is now available for another reservation.\n\n"
         "This automated reservation message was sent by Cynaptics OpenGPU.\n"
     )
-    message = _message(email, f"Cynaptics OpenGPU | Reservation cancelled for {reservation_date}")
+    message = _message(email, f"Reservation cancelled for {reservation_date}")
     message.set_content(plain)
     message.add_alternative(
         f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cynaptics OpenGPU reservation cancelled</title></head><body style="margin:0;background:#f3f9fc;color:#102532;font-family:Arial,sans-serif">
