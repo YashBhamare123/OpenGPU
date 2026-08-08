@@ -43,6 +43,33 @@ changing a subsystem.
 - Do not rename compatibility identifiers such as Docker labels, database tables,
   or systemd units without a migration plan.
 
+## Core Architecture & Context Maps
+
+To prevent reading large files repeatedly, refer to this reference context:
+
+### 1. Database Schema (`postgres/init.sql`)
+- **`teams`**: Represents users. Fields: `id`, `email`, `ssh_port`, `container_name`, `volume_name`, `provisioning_state`.
+- **`reservations`**: Tracks GPU bookings. Fields: `team_id`, `start_time`, `end_time`, `workspace_gb`, `temp_storage_gb`.
+  - Constraints: `end_time > start_time`, storage limits, and a GIST constraint `no_overlapping_reservations`.
+- **`provisioning_jobs`**: Async tasks for scheduler (states: `pending`, `running`, `done`, `failed`).
+
+### 2. API Routes Map (`api.py`)
+- **Auth**: `/auth/request-code`, `/auth/verify-code`, `/auth/logout`
+- **User**: `/me`, `/reservations` (GET/POST/DELETE)
+- **Admin**: `/admin/users` (GET/POST), `/admin/reservations` (GET/POST/DELETE)
+- **Health**: `/health/live`, `/health/ready`
+
+### 3. Docker Context (`manager.py`, `scheduler.py`)
+- Containers are identified using labels: `app=aiml-gpu-reservation` and `aiml.user_id=<team_id>`.
+- Workspaces map the user's `volume_name` to `/workspace` inside the container.
+
+## Token efficiency
+
+- Use line ranges when viewing large files to avoid reading unneeded context.
+- Use targeted searches instead of sweeping workspace searches.
+- Apply minimal, precise edits rather than overwriting whole files or making cosmetic changes.
+- Ensure terminal commands are quiet or paginated to limit context pollution.
+
 ## Validation
 
 Run the routine suite before handing off a change:
