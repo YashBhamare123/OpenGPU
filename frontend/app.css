@@ -76,12 +76,12 @@ dialog{width:min(430px,calc(100% - 32px));padding:0;border:1px solid var(--line-
 /* Persistent light/dark appearance */
 .theme-toggle{position:fixed;top:14px;right:max(18px,calc((100vw - 1180px)/2));z-index:100;display:grid;place-items:center;width:40px;height:40px;padding:0;border:1px solid var(--line-strong);border-radius:50%;background:var(--paper);color:var(--ink);box-shadow:3px 3px 0 rgb(16 37 50/.12);cursor:pointer;transition:color 150ms,background-color 150ms,border-color 150ms,transform 150ms,box-shadow 150ms}.theme-toggle:hover{color:var(--accent);transform:translateY(-1px);box-shadow:4px 5px 0 rgb(16 37 50/.14)}.theme-toggle:focus-visible{outline:3px solid rgb(37 181 255/.28);outline-offset:3px}.theme-toggle svg{grid-area:1/1;width:19px;height:19px}.theme-toggle .theme-sun{display:none}[data-theme="dark"] .theme-toggle .theme-moon{display:none}[data-theme="dark"] .theme-toggle .theme-sun{display:block}
 
-:root[data-theme="dark"]{--ink:#e8f4fa;--muted:#8fa8b6;--line:#203947;--line-strong:#315366;--paper:#0d1c26;--canvas:#07131c;--soft:#132a37;--accent:#086fa8;--accent-dark:#0b86c7;--accent-pale:#103246;--danger:#ff766e;--danger-pale:#351c21;--warning:#ffc15c;--success:#42c5ff;--success-pale:#102f40;color-scheme:dark}
-[data-theme="dark"] body{background:radial-gradient(circle at 78% -10%,rgb(37 181 255/.09),transparent 34%),var(--canvas)}
-[data-theme="dark"] .topbar,[data-theme="dark"] .login-panel,[data-theme="dark"] .booking-composer,[data-theme="dark"] .schedule,[data-theme="dark"] dialog,[data-theme="dark"] .booking-panel{background:var(--paper)}
-[data-theme="dark"] .login-panel,[data-theme="dark"] .booking-composer,[data-theme="dark"] .schedule{box-shadow:8px 8px 0 #030a0f}
-[data-theme="dark"] .theme-toggle{box-shadow:3px 3px 0 #02080c}
-[data-theme="dark"] .status,[data-theme="dark"] input,[data-theme="dark"] .secondary,[data-theme="dark"] .day-arrow,[data-theme="dark"] .duration-stepper,[data-theme="dark"] .timeline,[data-theme="dark"] .time-entry,[data-theme="dark"] .time-picker,[data-theme="dark"] .time-picker b,[data-theme="dark"] .time-picker select,[data-theme="dark"] .configuration-summary .configuration-time,[data-theme="dark"] .admin-field select,[data-theme="dark"] .inline-email-completion{background:#0a1821;color:var(--ink)}
+:root[data-theme="dark"]{--ink:#e8f4fa;--muted:#8fa8b6;--line:#0e1e33;--line-strong:#081221;--paper:#152945;--canvas:#0d1a2b;--soft:#1d385c;--accent:#086fa8;--accent-dark:#0b86c7;--accent-pale:#103246;--danger:#ff766e;--danger-pale:#351c21;--warning:#ffc15c;--success:#42c5ff;--success-pale:#102f40;color-scheme:dark}
+[data-theme="dark"] body{background:var(--canvas)}
+[data-theme="dark"] .topbar,[data-theme="dark"] .login-panel,[data-theme="dark"] .booking-composer,[data-theme="dark"] .schedule,[data-theme="dark"] dialog,[data-theme="dark"] .booking-panel{background:var(--paper);border-color:transparent}
+[data-theme="dark"] .login-panel,[data-theme="dark"] .booking-composer,[data-theme="dark"] .schedule{box-shadow:8px 8px 0 #000000}
+[data-theme="dark"] .theme-toggle{box-shadow:3px 3px 0 #000000}
+[data-theme="dark"] .status,[data-theme="dark"] input,[data-theme="dark"] .secondary,[data-theme="dark"] .day-arrow,[data-theme="dark"] .duration-stepper,[data-theme="dark"] .timeline,[data-theme="dark"] .time-entry,[data-theme="dark"] .time-picker,[data-theme="dark"] .time-picker b,[data-theme="dark"] .time-picker select,[data-theme="dark"] .configuration-summary .configuration-time,[data-theme="dark"] .admin-field select,[data-theme="dark"] .inline-email-completion{background:#0e192a;color:var(--ink)}
 [data-theme="dark"] input::placeholder,[data-theme="dark"] .time-entry input::placeholder{color:#607b8a}
 [data-theme="dark"] label,[data-theme="dark"] .field-label,[data-theme="dark"] .composer-field>span,[data-theme="dark"] .admin-field>span,[data-theme="dark"] .hour-label.major{color:#c4d9e3}
 [data-theme="dark"] .primary,[data-theme="dark"] .day-chip.active{color:#dff5ff;background:var(--accent)}
@@ -89,31 +89,31 @@ dialog{width:min(430px,calc(100% - 32px));padding:0;border:1px solid var(--line-
 [data-theme="dark"] .reserve-button{box-shadow:6px 6px 0 #075274}
 [data-theme="dark"] .reserve-button:hover:not(:disabled){box-shadow:8px 8px 0 #08658f}
 [data-theme="dark"] .reserve-button:disabled{box-shadow:3px 3px 0 #193645}
-[data-theme="dark"] .day-chip{background:#0c1b24;color:var(--muted)}
-[data-theme="dark"] .day-chip:hover{background:#142c38}
+[data-theme="dark"] .day-chip{background:#111d31;color:var(--muted)}
+[data-theme="dark"] .day-chip:hover{background:#1a2b47}
 [data-theme="dark"] .day-chip.active{color:#dff5ff}
-[data-theme="dark"] .key-open{background:#0a1821}
-[data-theme="dark"] .key-busy,[data-theme="dark"] .availability-block{background:#293b46;color:#d8e6ec;border-color:#516875}
-[data-theme="dark"] .key-past{background:repeating-linear-gradient(135deg,#0a1821,#0a1821 3px,#20333e 3px,#20333e 5px)}
-[data-theme="dark"] .hour-labels{background:#0b1a23}
-[data-theme="dark"] .quarter-cell{border-right-color:#142a36}
-[data-theme="dark"] .quarter-cell.hour{border-right-color:#2a4655}
-[data-theme="dark"] .past-block{background:repeating-linear-gradient(135deg,rgb(7 19 28/.8),rgb(7 19 28/.8) 5px,rgb(24 43 54/.78) 5px,rgb(24 43 54/.78) 8px)}
-[data-theme="dark"] .day-boundaries span{background:rgb(10 24 33/.92)}
-[data-theme="dark"] .availability-block.mine{background:#167db0;color:#f4fbff;border-color:#32bffb}
-[data-theme="dark"] .selection-block{background:#e9a83c;color:#241604;border-color:#ffd077;box-shadow:0 7px 20px rgb(0 0 0/.36)}
-[data-theme="dark"] .selection-block.conflict{background:#a94145;color:#fff0f0;border-color:#ff8a82}
-[data-theme="dark"] .notice{color:#ccefff;background:#102d3d;border-color:#27617e;box-shadow:4px 4px 0 rgb(0 0 0/.2)}
-[data-theme="dark"] .notice.error,[data-theme="dark"] .form-notice,[data-theme="dark"] .inline-error{color:#ffd7d4;background:#351c21;border-color:#74383b}
-[data-theme="dark"] .reservation-limit{background:#102f40;border-color:#285d77;color:#8fdcff}
+[data-theme="dark"] .key-open{background:#0e192a}
+[data-theme="dark"] .key-busy,[data-theme="dark"] .availability-block{background:#2e3d54;color:#d8e6ec;border-color:#465875}
+[data-theme="dark"] .key-past{background:repeating-linear-gradient(135deg,#0e192a,#0e192a 3px,#263450 3px,#263450 5px)}
+[data-theme="dark"] .hour-labels{background:#101c30}
+[data-theme="dark"] .quarter-cell{border-right-color:#152238}
+[data-theme="dark"] .quarter-cell.hour{border-right-color:#263450}
+[data-theme="dark"] .past-block{background:repeating-linear-gradient(135deg,rgb(10 20 40/.8),rgb(10 20 40/.8) 5px,rgb(34 48 76/.78) 5px,rgb(34 48 76/.78) 8px)}
+[data-theme="dark"] .day-boundaries span{background:rgb(15 27 50/.92)}
+[data-theme="dark"] .availability-block.mine{background:#1e5e3a;color:#dff6e8;border-color:#2c9c5d}
+[data-theme="dark"] .selection-block{background:#e9a83c;color:#241604;border-color:#e0ab46;box-shadow:0 7px 20px rgb(0 0 0/.36)}
+[data-theme="dark"] .selection-block.conflict{background:#a94145;color:#fff0f0;border-color:#db645c}
+[data-theme="dark"] .notice{color:#ccefff;background:#1c3055;border-color:#2b4782;box-shadow:4px 4px 0 rgb(0 0 0/.2)}
+[data-theme="dark"] .notice.error,[data-theme="dark"] .form-notice,[data-theme="dark"] .inline-error{color:#ffd7d4;background:#351c21;border-color:#5c2a2d}
+[data-theme="dark"] .reservation-limit{background:#1c355c;border-color:#2b437a;color:#8fdcff}
 [data-theme="dark"] .reservation-limit span{color:#a8c3d0}
 [data-theme="dark"] .configuration-summary>div,[data-theme="dark"] .dialog-actions,[data-theme="dark"] .admin-advanced,[data-theme="dark"] .storage-total{background:var(--soft)}
-[data-theme="dark"] dialog{color:var(--ink);box-shadow:12px 12px 0 rgb(0 0 0/.4)}
+[data-theme="dark"] dialog{color:var(--ink);box-shadow:12px 12px 0 #000000}
 [data-theme="dark"] dialog::backdrop{background:rgb(0 7 11/.72)}
-[data-theme="dark"] .period-toggle button.active{color:#bdeaff;background:#123a50;box-shadow:inset 0 0 0 1px #27749b}
-[data-theme="dark"] .duration-stepper button{background:#132a37}
-[data-theme="dark"] .duration-stepper button:hover{background:#1b3b4c}
-[data-theme="dark"] .reservation-pill{border-color:#27749b;background:#102f40;color:#83d8ff}
+[data-theme="dark"] .period-toggle button.active{color:#bdeaff;background:#1f3c6e;box-shadow:inset 0 0 0 1px #3266bd}
+[data-theme="dark"] .duration-stepper button{background:#1b2e4d}
+[data-theme="dark"] .duration-stepper button:hover{background:#263d66}
+[data-theme="dark"] .reservation-pill{border-color:#264a9c;background:#1c355c;color:#83d8ff}
 [data-theme="dark"] .extended-badge{background:#3b2b15!important;color:#ffd28b!important}
 [data-theme="dark"] .inline-email-ghost{color:#587282}
 [data-theme="dark"] .access-request-icon{border-color:#74383b}
