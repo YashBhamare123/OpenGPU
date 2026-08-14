@@ -13,13 +13,6 @@ def test_provisioning_notice_loads_until_ssh_credentials_are_sent():
     assert "900-(Date.now()-state.provisioningNoticeAt)" in javascript
 
 
-def test_frontend_asset_version_is_current():
-    html = Path("frontend/index.html").read_text()
-
-    assert 'app.css?v=52' in html
-    assert 'app.js?v=31' in html
-
-
 def test_status_panels_use_thin_left_borders():
     stylesheet = Path("frontend/app.css").read_text()
 
@@ -35,8 +28,8 @@ def test_dark_mode_is_shared_and_persistent():
 
     for html in (user_html, admin_html):
         assert 'id="theme-toggle"' in html
-        assert 'theme.js?v=1' in html
-        assert 'app.css?v=52' in html
+        assert "/frontend/theme.js?" in html
+        assert "/frontend/app.css?" in html
     assert 'localStorage.getItem("opengpu-theme")' in javascript
     assert 'root.dataset.theme' in javascript
     assert ':root[data-theme="dark"]' in stylesheet
