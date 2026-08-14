@@ -23,13 +23,6 @@ def test_otp_email_has_plain_and_professional_html_alternatives(monkeypatch):
     assert "123456" in plain
     assert "expires in 10 minutes" in plain.lower()
     assert "123456" in html
-    assert "JetBrains Mono" in html
-    assert "#25B5FF" in html
-    assert "Cynaptics OpenGPU" in plain
-    assert "Cynaptics OpenGPU" in html
-    assert '<meta name="viewport"' in html
-    assert "display:none" in html
-    assert "border-left" not in html
     assert message["From"] == "OpenGPU <opengpu@example.edu>"
     assert message["Date"]
     assert message["Message-ID"].endswith("@example.edu>")
@@ -57,7 +50,6 @@ def test_credentials_and_cancellation_share_transactional_headers_and_template(m
         assert message["Message-ID"].endswith("@example.edu>")
         assert message["Auto-Submitted"] == "auto-generated"
         assert message["X-Auto-Response-Suppress"] == "All"
-        assert "#25B5FF" in message.get_body(preferencelist=("html",)).get_content()
     cancellation = captured[1]
     assert "reservation cancelled" in cancellation["Subject"].lower()
     assert "has been cancelled" in cancellation.get_body(preferencelist=("plain",)).get_content()

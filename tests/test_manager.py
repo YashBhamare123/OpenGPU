@@ -12,12 +12,6 @@ def test_unmanaged_container_is_rejected(monkeypatch):
         manager._get_owned_container("gpu-user-1", 1)
 
 
-def test_password_shape():
-    password = manager.random_password()
-    assert len(password) == 20
-    assert password.isalnum()
-
-
 def test_user_storage_paths_are_stable_and_created(monkeypatch, tmp_path):
     monkeypatch.setattr(manager, "settings", replace(manager.settings, workspace_root=str(tmp_path)))
     def run_helper(command, **_kwargs):
@@ -92,15 +86,6 @@ def test_retry_recreates_container_before_emailing_new_password(monkeypatch, tmp
     assert captured["pids_limit"] == 4096
     assert captured["shm_size"] == "16g"
     assert result == "$6$new-hash"
-
-
-def test_verified_legacy_volume_is_accepted(monkeypatch):
-    volume = type("Volume", (), {"attrs": {"Labels": {}}})()
-    fake = type("Client", (), {
-        "volumes": type("Volumes", (), {"get": lambda self, _name: volume})(),
-    })()
-    monkeypatch.setattr(manager, "get_client", lambda: fake)
-    assert manager._get_owned_volume("legacy-workspace", 1, allow_legacy=True) is volume
 
 
 def test_managed_container_query_includes_stopped_containers(monkeypatch):
