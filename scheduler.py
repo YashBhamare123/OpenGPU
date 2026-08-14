@@ -1,11 +1,14 @@
 import json
 import time
-from datetime import datetime, timezone
 
 from config import settings
 from database import get_connection
-from manager import managed_containers, provision_user, remove_container, start_container
-
+from manager import (
+    managed_containers,
+    provision_user,
+    remove_container,
+    start_container,
+)
 
 LOCK_ID = 72819431
 
@@ -107,7 +110,7 @@ def process_one_job():
             conn.commit()
         finally:
             conn.close()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         conn = get_connection()
         try:
             with conn.cursor() as cursor:
@@ -218,11 +221,11 @@ def run():
         try:
             process_one_job()
             reconcile()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             error = exc
         try:
             heartbeat(error)
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
         time.sleep(settings.poll_interval)
 

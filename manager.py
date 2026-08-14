@@ -11,7 +11,6 @@ import docker
 from config import settings
 from mailer import send_credentials
 
-
 APP_LABEL = "aiml-gpu-reservation"
 _client = None
 

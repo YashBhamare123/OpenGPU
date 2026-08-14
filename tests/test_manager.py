@@ -1,5 +1,6 @@
-import pytest
 from dataclasses import replace
+
+import pytest
 
 import manager
 
@@ -40,9 +41,10 @@ def test_user_storage_paths_do_not_stat_root_owned_helper_output(monkeypatch, tm
 
 def test_retry_recreates_container_before_emailing_new_password(monkeypatch, tmp_path):
     class Existing:
-        labels = {"app": manager.APP_LABEL, "aiml.user_id": "1"}
-        status = "exited"
-        removed = False
+        def __init__(self):
+            self.labels = {"app": manager.APP_LABEL, "aiml.user_id": "1"}
+            self.status = "exited"
+            self.removed = False
         def reload(self): pass
         def remove(self, force=False): self.removed = True
 
