@@ -8,6 +8,7 @@ from manager import (
     provision_user,
     remove_container,
     start_container,
+    teardown_scratch,
 )
 
 LOCK_ID = 72819431
@@ -147,6 +148,23 @@ def desired_container():
         conn.close()
 
 
+def unretained_user_ids():
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """SELECT t.id FROM teams t
+                   WHERE t.container_name IS NOT NULL
+                     AND NOT EXISTS (
+                       SELECT 1 FROM reservations r
+                       WHERE r.team_id=t.id AND r.end_time>NOW() AND NOT r.cancelled
+                     )"""
+            )
+            return [row[0] for row in cursor]
+    finally:
+        conn.close()
+
+
 def retained_container_names():
     conn = get_connection()
     try:
@@ -186,6 +204,8 @@ def reconcile():
             if container.status == "running":
                 container.stop(timeout=15)
                 record_transition("container_stopped", int(container.labels["aiml.user_id"]), container.name)
+    for user_id in unretained_user_ids():
+        teardown_scratch(user_id)
     if desired and not any(c.name == desired_name and c.status == "running" for c in containers):
         start_container(
             desired_name, desired[0],

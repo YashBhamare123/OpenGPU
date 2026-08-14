@@ -160,6 +160,10 @@ prepare() {
   local user_id=$1 workspace_gb=$2 temp_gb=$3
   local user_root workspace host_keys scratch workspace_img scratch_img current_bytes wanted_bytes
 
+  if (( workspace_gb + temp_gb > 200 )); then
+    echo "Workspace and temporary storage can total at most 200 GB" >&2
+    exit 1
+  fi
   if [[ "$workspace_root" != /* ]]; then
     echo "WORKSPACE_ROOT must be an absolute path" >&2
     exit 1

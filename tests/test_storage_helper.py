@@ -131,3 +131,6 @@ def test_prepare_rejects_invalid_argv(tmp_path):
     assert bad.returncode == 2
     missing = _run(["1", "2"], env, check=False)
     assert missing.returncode == 2
+    over_cap = _run(["prepare", "5", "199", "199"], env, check=False)
+    assert over_cap.returncode == 1
+    assert "200 GB" in over_cap.stderr

@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import settings
 from database import get_connection
-from manager import APP_LABEL, get_client, user_storage_paths
+from manager import APP_LABEL, get_client, prepare_user_storage
 
 
 def source_volume(name: str, user_id: int, allow_unlabelled: bool = False):
@@ -56,11 +56,17 @@ def copy_volume(name: str, destination: Path) -> bool:
 def main() -> None:
     with get_connection() as connection:
         teams = connection.execute(
-            "SELECT id,container_name,volume_name,legacy_volume FROM teams ORDER BY id"
+            """SELECT t.id,t.container_name,t.volume_name,t.legacy_volume,
+                      (SELECT r.workspace_gb FROM reservations r
+                       WHERE r.team_id=t.id AND NOT r.cancelled AND r.end_time>NOW()
+                       ORDER BY r.start_time LIMIT 1),
+                      (SELECT r.temp_storage_gb FROM reservations r
+                       WHERE r.team_id=t.id AND NOT r.cancelled AND r.end_time>NOW()
+                       ORDER BY r.start_time LIMIT 1)
+               FROM teams t ORDER BY t.id"""
         ).fetchall()
 
-    for user_id, container_name, workspace_volume, legacy_volume in teams:
-        existing_container = None
+    for user_id, container_name, workspace_volume, legacy_volume, workspace_gb, temp_storage_gb in teams:
         if container_name:
             try:
                 existing_container = get_client().containers.get(container_name)
@@ -69,10 +75,13 @@ def main() -> None:
                     raise RuntimeError(f"Refusing unmanaged container {container_name}")
                 if existing_container.status == "running":
                     raise RuntimeError(f"Stop {container_name} before migrating user {user_id}")
+                existing_container.remove()
             except docker.errors.NotFound:
                 pass
 
-        workspace, host_keys, _scratch_home, _scratch_tmp = user_storage_paths(user_id)
+        workspace, host_keys, _scratch_home, _scratch_tmp = prepare_user_storage(
+            user_id, workspace_gb or 2, temp_storage_gb or 100,
+        )
         copied = []
         if workspace_volume and source_volume(workspace_volume, user_id, legacy_volume):
             copy_volume(workspace_volume, workspace)
@@ -81,8 +90,6 @@ def main() -> None:
         if source_volume(host_key_volume, user_id):
             copy_volume(host_key_volume, host_keys)
             copied.append(host_key_volume)
-        if copied and existing_container is not None:
-            existing_container.remove()
 
         if copied:
             with get_connection() as connection:

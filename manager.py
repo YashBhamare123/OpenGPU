@@ -3,6 +3,7 @@ import secrets
 import socket
 import string
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -101,10 +102,19 @@ def prepare_user_storage(
     return workspace, host_keys, scratch_home, scratch_tmp
 
 
-def teardown_scratch(user_id: int) -> None:
+def teardown_scratch(user_id: int, attempts: int = 3) -> None:
     if user_id < 1:
         raise ValueError("User ID must be positive")
-    _run_storage_helper("teardown-scratch", str(user_id), timeout=60)
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            _run_storage_helper("teardown-scratch", str(user_id), timeout=60)
+            return
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            if attempt + 1 < attempts:
+                time.sleep(1)
+    raise last_error
 
 
 def user_storage_paths(
@@ -122,15 +132,15 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
         raise ValueError("Reservation storage must total no more than 200 GB")
     password = random_password()
     password_hash = linux_password_hash(password)
-    workspace, host_keys, scratch_home, scratch_tmp = prepare_user_storage(
-        user_id, workspace_gb, temp_storage_gb,
-    )
     container = _get_owned_container(container_name, user_id)
     if container is not None:
         container.reload()
         if container.status == "running":
             raise RuntimeError("Refusing to replace a running provisioning container")
         container.remove()
+    workspace, host_keys, scratch_home, scratch_tmp = prepare_user_storage(
+        user_id, workspace_gb, temp_storage_gb,
+    )
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind((settings.docker_bind_ip, ssh_port))
     container = get_client().containers.create(

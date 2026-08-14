@@ -1,3 +1,4 @@
+import subprocess
 from dataclasses import replace
 
 import pytest
@@ -85,9 +86,15 @@ def test_retry_recreates_container_before_emailing_new_password(monkeypatch, tmp
         "bind": lambda self, address: None,
     })())
     monkeypatch.setattr(manager, "settings", replace(manager.settings, workspace_root=str(tmp_path)))
-    monkeypatch.setattr(manager, "prepare_user_storage", lambda *_args, **_kwargs: _storage_paths(tmp_path))
+    events = []
+    def prepare(_user_id, _workspace_gb=2, _temp_storage_gb=100):
+        assert existing.removed
+        events.append("prepare")
+        return _storage_paths(tmp_path)
+    monkeypatch.setattr(manager, "prepare_user_storage", prepare)
 
     result = manager.provision_user(1, "user@example.edu", "gpu1", 0, "gpu-user-1", "gpu-workspace-1")
+    assert events == ["prepare"]
     assert existing.removed
     assert captured["environment"]["TEAM_PASSWORD_HASH"] == "$6$new-hash"
     assert captured["environment"]["WORKSPACE_GB"] == "2"
@@ -178,3 +185,23 @@ def test_remove_container_tears_down_scratch_after_remove(monkeypatch):
     monkeypatch.setattr(manager.subprocess, "run", run_helper)
     manager.remove_container(Container())
     assert events == ["container", ("teardown-scratch", "9")]
+
+
+def test_remove_container_retries_scratch_teardown(monkeypatch):
+    attempts = {"n": 0}
+    class Container:
+        def __init__(self):
+            self.labels = {"app": manager.APP_LABEL, "aiml.user_id": "9"}
+            self.status = "exited"
+        def reload(self): pass
+        def remove(self): pass
+
+    def run_helper(command, **_kwargs):
+        attempts["n"] += 1
+        if attempts["n"] < 2:
+            raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(manager.subprocess, "run", run_helper)
+    monkeypatch.setattr(manager.time, "sleep", lambda _seconds: None)
+    manager.remove_container(Container())
+    assert attempts["n"] == 2
