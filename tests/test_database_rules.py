@@ -9,7 +9,6 @@ from fastapi import HTTPException
 
 import api
 
-
 TEST_URL = os.environ.get("TEST_DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(not TEST_URL, reason="TEST_DATABASE_URL is not configured")
 

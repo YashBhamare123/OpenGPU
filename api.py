@@ -1,11 +1,20 @@
 import hmac
 import json
+from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
-from datetime import datetime, timedelta, timezone
+from typing import Annotated
 
 import psycopg
-from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi import (
+    Cookie,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+)
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, field_validator
@@ -21,7 +30,6 @@ from security import (
     otp_expiry,
     session_expiry,
 )
-
 
 app = FastAPI(title="OpenGPU")
 app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
@@ -124,7 +132,7 @@ def admin_frontend():
     return FileResponse("frontend/admin.html")
 
 
-def require_admin(user=Depends(current_user)) -> dict:
+def require_admin(user: Annotated[dict, Depends(current_user)]) -> dict:
     if normalize_email(user["email"]) not in settings.admin_emails:
         raise HTTPException(status_code=403, detail="Administrator access required")
     return user
@@ -158,7 +166,7 @@ def request_code(request: EmailRequest):
     if code:
         try:
             send_otp(email, code)
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             # Keep the response generic and avoid exposing SMTP details.
             pass
     return {"detail": "If the address is approved, a login code has been sent.",
@@ -217,12 +225,12 @@ def logout(response: Response, session: str | None = Cookie(default=None)):
 
 
 @app.get("/me")
-def me(user=Depends(current_user)):
+def me(user: Annotated[dict, Depends(current_user)]):
     return {**user, "reservation_limit_minutes": settings.reservation_limit_minutes}
 
 
 @app.get("/reservations")
-def get_reservations(user=Depends(current_user)):
+def get_reservations(user: Annotated[dict, Depends(current_user)]):
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
@@ -242,7 +250,7 @@ def get_reservations(user=Depends(current_user)):
 
 
 @app.get("/admin/users")
-def admin_users(_admin=Depends(require_admin)):
+def admin_users(_admin: Annotated[dict, Depends(require_admin)]):
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
@@ -259,7 +267,7 @@ def admin_users(_admin=Depends(require_admin)):
 
 
 @app.post("/admin/users", status_code=201)
-def admin_whitelist_user(request: AdminUserRequest, admin=Depends(require_admin)):
+def admin_whitelist_user(request: AdminUserRequest, admin: Annotated[dict, Depends(require_admin)]):
     email = normalize_email(str(request.email))
     display_name = request.display_name.strip() if request.display_name else None
     if display_name == "":
@@ -310,7 +318,7 @@ def admin_whitelist_user(request: AdminUserRequest, admin=Depends(require_admin)
 
 
 @app.get("/admin/reservations")
-def admin_reservations(_admin=Depends(require_admin)):
+def admin_reservations(_admin: Annotated[dict, Depends(require_admin)]):
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
@@ -330,7 +338,7 @@ def admin_reservations(_admin=Depends(require_admin)):
 
 
 @app.post("/admin/reservations")
-def admin_create_reservation(request: AdminReservationRequest, admin=Depends(require_admin),
+def admin_create_reservation(request: AdminReservationRequest, admin: Annotated[dict, Depends(require_admin)],
                              idempotency_key: str = Header(min_length=8, max_length=128)):
     email = normalize_email(str(request.email))
     if request.start_time < datetime.now(timezone.utc):
@@ -407,7 +415,7 @@ def admin_create_reservation(request: AdminReservationRequest, admin=Depends(req
 
 
 @app.delete("/admin/reservations/{reservation_id}", status_code=204)
-def admin_cancel_reservation(reservation_id: int, admin=Depends(require_admin)):
+def admin_cancel_reservation(reservation_id: int, admin: Annotated[dict, Depends(require_admin)]):
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
@@ -427,7 +435,7 @@ def admin_cancel_reservation(reservation_id: int, admin=Depends(require_admin)):
         conn.commit()
         try:
             send_cancellation(str(row[1]), row[2], row[3])
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             # Cancellation is authoritative even if the SMTP relay is unavailable.
             pass
     finally:
@@ -435,7 +443,7 @@ def admin_cancel_reservation(reservation_id: int, admin=Depends(require_admin)):
 
 
 @app.post("/reservations")
-def create_reservation(request: ReservationRequest, user=Depends(current_user),
+def create_reservation(request: ReservationRequest, user: Annotated[dict, Depends(current_user)],
                        idempotency_key: str = Header(min_length=8, max_length=128)):
     if request.start_time < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Reservation cannot start in the past")
@@ -501,7 +509,7 @@ def create_reservation(request: ReservationRequest, user=Depends(current_user),
 
 
 @app.delete("/reservations/{reservation_id}", status_code=204)
-def cancel_reservation(reservation_id: int, user=Depends(current_user)):
+def cancel_reservation(reservation_id: int, user: Annotated[dict, Depends(current_user)]):
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
@@ -518,7 +526,7 @@ def cancel_reservation(reservation_id: int, user=Depends(current_user)):
         conn.commit()
         try:
             send_cancellation(user["email"], row[1], row[2])
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             # Cancellation is authoritative even if the SMTP relay is unavailable.
             pass
     finally:
