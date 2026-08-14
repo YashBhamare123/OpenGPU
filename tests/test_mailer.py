@@ -15,7 +15,7 @@ def test_otp_email_has_plain_and_professional_html_alternatives(monkeypatch):
     assert len(captured) == 1
     message = captured[0]
     assert message["To"] == "person@example.edu"
-    assert message["Subject"] == "Cynaptics OpenGPU | Your sign-in code"
+    assert message["Subject"] == "Your sign-in code"
     assert "123456" not in message["Subject"]
     assert message.is_multipart()
     plain = message.get_body(preferencelist=("plain",)).get_content()
