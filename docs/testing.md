@@ -40,6 +40,17 @@ python -m ruff check api.py admin.py config.py database.py mailer.py manager.py 
 docker build --check .
 ```
 
+`docker build --check .` validates the GPU user image locally. GitHub Actions does not run it.
+
+## CI
+
+Pull requests and pushes to `main` run `.github/workflows/test.yml`:
+
+- `static`: `bash -n`, `py_compile`, and `ruff check` (Ruff 0.16.3)
+- `tests`: PostgreSQL 16 with database name `opengpu_test`, then `TEST_MODE=true scripts/run-tests.sh`
+
+The workflow never builds `opengpu:ml`, starts the API or scheduler, or talks to a GPU host.
+
 ## Manual integration checks
 
 Use a non-production user and an idle GPU to verify:
