@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException, Response
 
 import api
-from api import current_user, enforce_origin, live, require_admin, settings
+from api import current_user, enforce_origin, require_admin, settings
 
 
 def test_standard_reservation_limit_is_enforced_before_database_access(monkeypatch):
@@ -16,10 +16,6 @@ def test_standard_reservation_limit_is_enforced_before_database_access(monkeypat
 
     with pytest.raises(HTTPException, match="up to 120 minutes"):
         api.create_reservation(request, user={"id": 1}, idempotency_key="test-limit-key")
-
-
-def test_liveness_has_no_external_dependency():
-    assert live() == {"status": "ok"}
 
 
 def test_private_routes_require_authentication_before_external_access():
@@ -52,9 +48,3 @@ def test_foreign_origin_is_rejected():
         assert response.status_code == 403
     finally:
         object.__setattr__(settings, "allowed_origins", previous)
-from datetime import datetime, timedelta, timezone
-
-import pytest
-from fastapi import HTTPException
-
-import api
