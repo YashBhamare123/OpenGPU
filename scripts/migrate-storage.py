@@ -72,7 +72,7 @@ def main() -> None:
             except docker.errors.NotFound:
                 pass
 
-        workspace, host_keys = user_storage_paths(user_id)
+        workspace, host_keys, _scratch_home, _scratch_tmp = user_storage_paths(user_id)
         copied = []
         if workspace_volume and source_volume(workspace_volume, user_id, legacy_volume):
             copy_volume(workspace_volume, workspace)

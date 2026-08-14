@@ -62,26 +62,55 @@ def _get_owned_volume(name: str, user_id: int, allow_legacy: bool = False):
     return volume
 
 
-def user_storage_paths(user_id: int, workspace_gb: int = 2) -> tuple[Path, Path]:
+def _storage_root() -> Path:
+    configured_root = Path(settings.workspace_root).expanduser()
+    if not configured_root.is_absolute():
+        raise RuntimeError("WORKSPACE_ROOT must be an absolute path")
+    # The storage helper deliberately creates root-owned paths that the scheduler
+    # cannot stat. Normalize lexically without traversing those directories;
+    # the configured root is trusted deployment configuration, not user input.
+    return Path(os.path.abspath(configured_root))
+
+
+def _run_storage_helper(*args: str, timeout: int) -> None:
+    subprocess.run(
+        ["sudo", "-n", settings.storage_helper, *args],
+        capture_output=True, text=True, check=True, timeout=timeout,
+    )
+
+
+def prepare_user_storage(
+    user_id: int, workspace_gb: int = 2, temp_storage_gb: int = 100,
+) -> tuple[Path, Path, Path, Path]:
     if user_id < 1:
         raise ValueError("User ID must be positive")
     if workspace_gb < 1 or workspace_gb > 199:
         raise ValueError("Workspace storage must be between 1 and 199 GB")
-    configured_root = Path(settings.workspace_root).expanduser()
-    if not configured_root.is_absolute():
-        raise RuntimeError("WORKSPACE_ROOT must be an absolute path")
-    # The quota helper deliberately creates root-owned paths that the scheduler
-    # cannot stat. Normalize lexically without traversing those directories;
-    # the configured root is trusted deployment configuration, not user input.
-    root = Path(os.path.abspath(configured_root))
-    user_root = root / "users" / str(user_id)
+    if temp_storage_gb < 1 or temp_storage_gb > 199:
+        raise ValueError("Temporary storage must be between 1 and 199 GB")
+    if workspace_gb + temp_storage_gb > 200:
+        raise ValueError("Reservation storage must total no more than 200 GB")
+    user_root = _storage_root() / "users" / str(user_id)
     workspace = user_root / "workspace"
     host_keys = user_root / "ssh-host-keys"
-    subprocess.run(
-        ["sudo", "-n", settings.storage_helper, str(user_id), str(workspace_gb)],
-        capture_output=True, text=True, check=True, timeout=15,
+    scratch_home = user_root / "scratch" / "home"
+    scratch_tmp = user_root / "scratch" / "tmp"
+    _run_storage_helper(
+        "prepare", str(user_id), str(workspace_gb), str(temp_storage_gb), timeout=300,
     )
-    return workspace, host_keys
+    return workspace, host_keys, scratch_home, scratch_tmp
+
+
+def teardown_scratch(user_id: int) -> None:
+    if user_id < 1:
+        raise ValueError("User ID must be positive")
+    _run_storage_helper("teardown-scratch", str(user_id), timeout=60)
+
+
+def user_storage_paths(
+    user_id: int, workspace_gb: int = 2, temp_storage_gb: int = 100,
+) -> tuple[Path, Path, Path, Path]:
+    return prepare_user_storage(user_id, workspace_gb, temp_storage_gb)
 
 
 def provision_user(user_id: int, email: str, username: str, ssh_port: int,
@@ -93,7 +122,9 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
         raise ValueError("Reservation storage must total no more than 200 GB")
     password = random_password()
     password_hash = linux_password_hash(password)
-    workspace, host_keys = user_storage_paths(user_id, workspace_gb)
+    workspace, host_keys, scratch_home, scratch_tmp = prepare_user_storage(
+        user_id, workspace_gb, temp_storage_gb,
+    )
     container = _get_owned_container(container_name, user_id)
     if container is not None:
         container.reload()
@@ -111,6 +142,8 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
         volumes={
             str(workspace): {"bind": "/workspace", "mode": "rw"},
             str(host_keys): {"bind": "/etc/ssh/host_keys", "mode": "rw"},
+            str(scratch_home): {"bind": f"/home/{username}", "mode": "rw"},
+            str(scratch_tmp): {"bind": "/tmp", "mode": "rw"},
         },
         environment={"TEAM_NAME": username, "TEAM_PASSWORD_HASH": password_hash,
                      "WORKSPACE_GB": str(workspace_gb), "TEMP_STORAGE_GB": str(temp_storage_gb)},
@@ -120,7 +153,6 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
         pids_limit=settings.pids_limit,
         shm_size=settings.shm_size,
         restart_policy={"Name": "no"},
-        storage_opt={"size": f"{temp_storage_gb}G"},
     )
     if email_credentials:
         try:
@@ -139,7 +171,10 @@ def managed_containers():
     return get_client().containers.list(all=True, filters={"label": f"app={APP_LABEL}"})
 
 
-def start_container(name: str, user_id: int) -> None:
+def start_container(
+    name: str, user_id: int, workspace_gb: int = 2, temp_storage_gb: int = 100,
+) -> None:
+    prepare_user_storage(user_id, workspace_gb, temp_storage_gb)
     container = _get_owned_container(name, user_id)
     if container is None:
         raise RuntimeError(f"Managed container {name} is missing")
@@ -158,7 +193,12 @@ def stop_container(container, timeout: int = 15) -> None:
 def remove_container(container, timeout: int = 15) -> None:
     if container.labels.get("app") != APP_LABEL:
         raise RuntimeError("Refusing to remove an unmanaged container")
+    raw_user_id = container.labels.get("aiml.user_id", "")
+    if not raw_user_id.isdigit() or int(raw_user_id) < 1:
+        raise RuntimeError("Managed container is missing a valid aiml.user_id label")
+    user_id = int(raw_user_id)
     container.reload()
     if container.status == "running":
         stop_container(container, timeout=timeout)
     container.remove()
+    teardown_scratch(user_id)

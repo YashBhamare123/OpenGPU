@@ -16,23 +16,43 @@ class FakeContainer:
 def test_reconcile_stops_old_before_starting_new(monkeypatch):
     events = []
     old = FakeContainer("gpu-user-1")
-    monkeypatch.setattr(scheduler, "desired_container", lambda: (2, "gpu-user-2"))
+    monkeypatch.setattr(scheduler, "desired_container", lambda: (2, "gpu-user-2", 2, 100))
     monkeypatch.setattr(scheduler, "retained_container_names", lambda: {"gpu-user-1", "gpu-user-2"})
     monkeypatch.setattr(scheduler, "managed_containers", lambda: [old])
     monkeypatch.setattr(old, "stop", lambda timeout=15: events.append(("stop", old.name)))
-    monkeypatch.setattr(scheduler, "start_container", lambda n, i: events.append(("start", n, i)))
+    monkeypatch.setattr(
+        scheduler, "start_container",
+        lambda n, i, workspace_gb=2, temp_storage_gb=100: events.append(("start", n, i, workspace_gb, temp_storage_gb)),
+    )
     monkeypatch.setattr(scheduler, "record_transition", lambda *args: None)
     scheduler.reconcile()
-    assert events == [("stop", "gpu-user-1"), ("start", "gpu-user-2", 2)]
+    assert events == [("stop", "gpu-user-1"), ("start", "gpu-user-2", 2, 2, 100)]
+
+
+def test_reconcile_start_remounts_with_reservation_storage(monkeypatch):
+    events = []
+    monkeypatch.setattr(scheduler, "desired_container", lambda: (2, "gpu-user-2", 5, 40))
+    monkeypatch.setattr(scheduler, "retained_container_names", lambda: {"gpu-user-2"})
+    monkeypatch.setattr(scheduler, "managed_containers", list)
+    monkeypatch.setattr(
+        scheduler, "start_container",
+        lambda n, i, workspace_gb=2, temp_storage_gb=100: events.append((n, i, workspace_gb, temp_storage_gb)),
+    )
+    monkeypatch.setattr(scheduler, "record_transition", lambda *args: None)
+    scheduler.reconcile()
+    assert events == [("gpu-user-2", 2, 5, 40)]
 
 
 def test_reconcile_never_stops_when_desired_is_already_running(monkeypatch):
     events = []
     current = FakeContainer("gpu-user-2")
-    monkeypatch.setattr(scheduler, "desired_container", lambda: (2, "gpu-user-2"))
+    monkeypatch.setattr(scheduler, "desired_container", lambda: (2, "gpu-user-2", 2, 100))
     monkeypatch.setattr(scheduler, "retained_container_names", lambda: {"gpu-user-2"})
     monkeypatch.setattr(scheduler, "managed_containers", lambda: [current])
-    monkeypatch.setattr(scheduler, "start_container", lambda n, i: events.append("start"))
+    monkeypatch.setattr(
+        scheduler, "start_container",
+        lambda n, i, workspace_gb=2, temp_storage_gb=100: events.append("start"),
+    )
     monkeypatch.setattr(scheduler, "record_transition", lambda *args: None)
     scheduler.reconcile()
     assert events == []
@@ -58,7 +78,10 @@ def test_reconcile_keeps_stopped_container_for_future_reservation(monkeypatch):
     monkeypatch.setattr(scheduler, "retained_container_names", lambda: {"gpu-user-3"})
     monkeypatch.setattr(scheduler, "managed_containers", lambda: [future])
     monkeypatch.setattr(scheduler, "remove_container", lambda c: events.append("remove"))
-    monkeypatch.setattr(scheduler, "start_container", lambda n, i: events.append("start"))
+    monkeypatch.setattr(
+        scheduler, "start_container",
+        lambda n, i, workspace_gb=2, temp_storage_gb=100: events.append("start"),
+    )
     monkeypatch.setattr(scheduler, "record_transition", lambda *args: None)
     scheduler.reconcile()
     assert events == []

@@ -1,36 +1,255 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-workspace_root=/var/lib/docker/opengpu-workspaces
-xfs_mount=/var/lib/docker
-project_base=200000
+# Installed copies replace the placeholder so argv cannot choose the root.
+workspace_root="__OPENGPU_WORKSPACE_ROOT__"
+if [[ "$workspace_root" == "__OPENGPU_WORKSPACE_ROOT__" ]]; then
+  workspace_root="${OPENGPU_WORKSPACE_ROOT:-/var/lib/docker/opengpu-workspaces}"
+fi
 
-if [[ $# -ne 2 || ! "$1" =~ ^[1-9][0-9]*$ || ! "$2" =~ ^[1-9][0-9]*$ || "$2" -gt 199 ]]; then
-  echo "Usage: opengpu-storage-init POSITIVE_USER_ID WORKSPACE_GB_1_TO_199" >&2
+usage() {
+  echo "Usage: opengpu-storage-init prepare USER_ID WORKSPACE_GB TEMP_GB" >&2
+  echo "       opengpu-storage-init teardown-scratch USER_ID" >&2
   exit 2
+}
+
+bytes_for_gb() {
+  printf '%s\n' $(( $1 * 1024 * 1024 * 1024 ))
+}
+
+positive_id() {
+  [[ "$1" =~ ^[1-9][0-9]*$ ]]
+}
+
+storage_gb() {
+  [[ "$1" =~ ^[1-9][0-9]*$ && "$1" -ge 1 && "$1" -le 199 ]]
+}
+
+install_dir() {
+  local mode=$1 dir=$2
+  install -d -m "$mode" "$dir"
+  if [[ ${EUID} -eq 0 ]]; then
+    chown root:root "$dir"
+  fi
+}
+
+is_mountpoint() {
+  findmnt --mountpoint "$1" >/dev/null 2>&1
+}
+
+associated_loop() {
+  losetup -n -O NAME --associated "$1" 2>/dev/null | awk 'NF { print; exit }'
+}
+
+attach_loop() {
+  local img=$1 existing
+  existing=$(associated_loop "$img")
+  if [[ -n "$existing" ]]; then
+    printf '%s\n' "$existing"
+    return 0
+  fi
+  losetup --find --show -- "$img"
+}
+
+detach_loops() {
+  local img=$1 name
+  while read -r name; do
+    [[ -z "$name" ]] && continue
+    losetup --detach "$name"
+  done < <(losetup -n -O NAME --associated "$img" 2>/dev/null || true)
+}
+
+unmount_dir() {
+  if is_mountpoint "$1"; then
+    umount -- "$1"
+  fi
+}
+
+create_sparse_ext4() {
+  local img=$1 gb=$2
+  rm -f -- "$img"
+  truncate -s "${gb}G" -- "$img"
+  mkfs.ext4 -F -q -- "$img" >/dev/null
+}
+
+grow_image() {
+  local img=$1 wanted_gb=$2
+  local current_bytes wanted_bytes loop
+  current_bytes=$(stat -c '%s' -- "$img")
+  wanted_bytes=$(bytes_for_gb "$wanted_gb")
+  if (( current_bytes > wanted_bytes )); then
+    echo "Refusing to shrink workspace image $(basename "$img") from ${current_bytes} bytes to ${wanted_gb}G" >&2
+    exit 1
+  fi
+  if (( current_bytes == wanted_bytes )); then
+    return 0
+  fi
+  truncate -s "${wanted_gb}G" -- "$img"
+  loop=$(associated_loop "$img")
+  if [[ -n "$loop" ]]; then
+    losetup -c "$loop"
+    resize2fs -- "$loop" >/dev/null
+  else
+    e2fsck -f -p -- "$img" >/dev/null
+    resize2fs -- "$img" >/dev/null
+  fi
+}
+
+mount_image() {
+  local img=$1 dir=$2 loop
+  if is_mountpoint "$dir"; then
+    return 0
+  fi
+  install_dir 0750 "$dir"
+  loop=$(attach_loop "$img")
+  mount -- "$loop" "$dir"
+}
+
+copy_directory_into_image() {
+  local workspace=$1 img=$2
+  local staging loop
+  if is_mountpoint "$workspace"; then
+    return 0
+  fi
+  if [[ ! -d "$workspace" ]]; then
+    return 0
+  fi
+  if [[ -z "$(find "$workspace" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)" ]]; then
+    return 0
+  fi
+  staging=$(mktemp -d -- "${workspace}.staging.XXXXXX")
+  loop=$(attach_loop "$img")
+  mount -- "$loop" "$staging"
+  cp -a -- "$workspace"/. "$staging"/
+  umount -- "$staging"
+  rmdir -- "$staging"
+}
+
+replace_dir_with_mount() {
+  local workspace=$1 img=$2
+  local backup
+  if is_mountpoint "$workspace"; then
+    return 0
+  fi
+  backup="${workspace}.pre-image.$$"
+  if [[ -e "$workspace" ]]; then
+    mv -- "$workspace" "$backup"
+  fi
+  install_dir 0750 "$workspace"
+  if ! mount_image "$img" "$workspace"; then
+    if [[ -e "$backup" ]]; then
+      rm -rf -- "$workspace"
+      mv -- "$backup" "$workspace"
+    fi
+    echo "Failed to mount $(basename "$img") on $workspace" >&2
+    exit 1
+  fi
+  if [[ -e "$backup" ]]; then
+    rm -rf -- "$backup"
+  fi
+}
+
+ensure_scratch_layout() {
+  local scratch=$1
+  install_dir 0755 "$scratch/home"
+  install_dir 1777 "$scratch/tmp"
+  chmod 1777 -- "$scratch/tmp"
+}
+
+prepare() {
+  local user_id=$1 workspace_gb=$2 temp_gb=$3
+  local user_root workspace host_keys scratch workspace_img scratch_img current_bytes wanted_bytes
+
+  if [[ "$workspace_root" != /* ]]; then
+    echo "WORKSPACE_ROOT must be an absolute path" >&2
+    exit 1
+  fi
+
+  user_root="$workspace_root/users/$user_id"
+  workspace="$user_root/workspace"
+  host_keys="$user_root/ssh-host-keys"
+  scratch="$user_root/scratch"
+  workspace_img="$user_root/workspace.img"
+  scratch_img="$user_root/scratch.img"
+
+  install_dir 0750 "$workspace_root"
+  install_dir 0750 "$workspace_root/users"
+  install_dir 0750 "$user_root"
+  install_dir 0700 "$host_keys"
+  install_dir 0750 "$workspace"
+  install_dir 0750 "$scratch"
+
+  if [[ ! -f "$workspace_img" ]]; then
+    create_sparse_ext4 "$workspace_img" "$workspace_gb"
+    copy_directory_into_image "$workspace" "$workspace_img"
+    replace_dir_with_mount "$workspace" "$workspace_img"
+  else
+    grow_image "$workspace_img" "$workspace_gb"
+    mount_image "$workspace_img" "$workspace"
+  fi
+
+  wanted_bytes=$(bytes_for_gb "$temp_gb")
+  if [[ -f "$scratch_img" ]]; then
+    current_bytes=$(stat -c '%s' -- "$scratch_img")
+  else
+    current_bytes=0
+  fi
+  if [[ ! -f "$scratch_img" || "$current_bytes" -ne "$wanted_bytes" ]]; then
+    unmount_dir "$scratch"
+    detach_loops "$scratch_img"
+    create_sparse_ext4 "$scratch_img" "$temp_gb"
+  fi
+  mount_image "$scratch_img" "$scratch"
+  ensure_scratch_layout "$scratch"
+
+  printf 'user_id=%s workspace=%s workspace_gb=%s scratch=%s temp_gb=%s\n' \
+    "$user_id" "$workspace" "$workspace_gb" "$scratch" "$temp_gb"
+}
+
+teardown_scratch() {
+  local user_id=$1
+  local user_root scratch scratch_img
+
+  if [[ "$workspace_root" != /* ]]; then
+    echo "WORKSPACE_ROOT must be an absolute path" >&2
+    exit 1
+  fi
+
+  user_root="$workspace_root/users/$user_id"
+  scratch="$user_root/scratch"
+  scratch_img="$user_root/scratch.img"
+
+  if [[ -d "$scratch" ]]; then
+    unmount_dir "$scratch"
+  fi
+  if [[ -e "$scratch_img" ]]; then
+    detach_loops "$scratch_img"
+    rm -f -- "$scratch_img"
+  fi
+  printf 'user_id=%s scratch_removed=1\n' "$user_id"
+}
+
+if [[ $# -lt 2 ]]; then
+  usage
 fi
 
-user_id=$1
-workspace_gb=$2
-project_id=$((project_base + user_id))
-user_root="$workspace_root/users/$user_id"
-workspace="$user_root/workspace"
-host_keys="$user_root/ssh-host-keys"
+command=$1
+shift
 
-if [[ "$(findmnt -n -o FSTYPE -T "$xfs_mount")" != xfs ]]; then
-  echo "$xfs_mount is not backed by XFS" >&2
-  exit 1
-fi
-if ! findmnt -n -o OPTIONS -T "$xfs_mount" | grep -Eq '(^|,)(pquota|prjquota)(,|$)'; then
-  echo "$xfs_mount is not mounted with project quotas" >&2
-  exit 1
-fi
-
-install -d -m 0750 -o root -g root "$workspace_root" "$workspace_root/users" "$user_root"
-install -d -m 0750 -o root -g root "$workspace"
-install -d -m 0700 -o root -g root "$host_keys"
-
-chattr -p "$project_id" +P "$workspace"
-xfs_quota -x -c "limit -p bsoft=${workspace_gb}g bhard=${workspace_gb}g $project_id" "$xfs_mount"
-
-printf 'user_id=%s project_id=%s workspace=%s workspace_gb=%s\n' "$user_id" "$project_id" "$workspace" "$workspace_gb"
+case "$command" in
+  prepare)
+    if [[ $# -ne 3 ]] || ! positive_id "$1" || ! storage_gb "$2" || ! storage_gb "$3"; then
+      usage
+    fi
+    prepare "$1" "$2" "$3"
+    ;;
+  teardown-scratch)
+    if [[ $# -ne 1 ]] || ! positive_id "$1"; then
+      usage
+    fi
+    teardown_scratch "$1"
+    ;;
+  *)
+    usage
+    ;;
+esac

@@ -135,7 +135,8 @@ def desired_container():
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT t.id,t.container_name FROM reservations r JOIN teams t ON t.id=r.team_id
+                SELECT t.id,t.container_name,r.workspace_gb,r.temp_storage_gb
+                FROM reservations r JOIN teams t ON t.id=r.team_id
                 WHERE r.start_time<=NOW() AND r.end_time>NOW() AND NOT r.cancelled
                   AND t.enabled AND t.provisioning_state='ready'
                 ORDER BY r.start_time,r.id LIMIT 1
@@ -186,7 +187,10 @@ def reconcile():
                 container.stop(timeout=15)
                 record_transition("container_stopped", int(container.labels["aiml.user_id"]), container.name)
     if desired and not any(c.name == desired_name and c.status == "running" for c in containers):
-        start_container(desired_name, desired[0])
+        start_container(
+            desired_name, desired[0],
+            workspace_gb=desired[2] or 2, temp_storage_gb=desired[3] or 100,
+        )
         record_transition("container_started", desired[0], desired_name)
 
 

@@ -120,8 +120,9 @@ if [[ "$storage_helper" != /* || ! -x "$storage_helper" ]]; then
   echo "STORAGE_HELPER must be an installed executable at an absolute path: $storage_helper" >&2
   exit 1
 fi
-if ! sudo -n -l "$storage_helper" 1 2 >/dev/null 2>&1; then
-  echo "The scheduler cannot run STORAGE_HELPER without a password. Run: sudo ./scripts/install-storage-helper" >&2
+if ! sudo -n -l "$storage_helper" prepare 1 2 3 >/dev/null 2>&1 \
+  || ! sudo -n -l "$storage_helper" teardown-scratch 1 >/dev/null 2>&1; then
+  echo "The scheduler cannot run STORAGE_HELPER without a password. Reinstall: sudo ./scripts/install-storage-helper" >&2
   exit 1
 fi
 echo "Storage helper: ok ($workspace_root)"
@@ -170,6 +171,38 @@ if missing_tables or missing_columns or missing_reservation_columns:
         "Apply the pending numbered migrations after taking a backup."
     )
 print("PostgreSQL schema: ok")
+PY
+
+python3 - <<'PY'
+import os
+import sys
+from pathlib import Path
+
+from config import settings
+from database import get_connection
+
+root = Path(settings.workspace_root)
+probe = root
+while not probe.exists() and probe != probe.parent:
+    probe = probe.parent
+try:
+    usage = os.statvfs(probe)
+except OSError as exc:
+    print(f"Warning: could not inspect free space on {probe}: {exc}", file=sys.stderr)
+    raise SystemExit(0)
+free_gb = (usage.f_bavail * usage.f_frsize) // (1024 ** 3)
+with get_connection() as connection:
+    row = connection.execute(
+        """SELECT temp_storage_gb FROM reservations
+           WHERE NOT cancelled AND end_time > NOW()
+           ORDER BY start_time LIMIT 1"""
+    ).fetchone()
+if row and free_gb < row[0]:
+    print(
+        f"Warning: {root} has {free_gb} GB free; the next reservation needs "
+        f"{row[0]} GB of scratch disk.",
+        file=sys.stderr,
+    )
 PY
 
 echo "Checking Docker access and image..."
