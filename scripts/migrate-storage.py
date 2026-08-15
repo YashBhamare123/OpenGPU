@@ -67,6 +67,7 @@ def main() -> None:
         ).fetchall()
 
     for user_id, container_name, workspace_volume, legacy_volume, workspace_gb, temp_storage_gb in teams:
+        existing_container = None
         if container_name:
             try:
                 existing_container = get_client().containers.get(container_name)
@@ -75,18 +76,27 @@ def main() -> None:
                     raise RuntimeError(f"Refusing unmanaged container {container_name}")
                 if existing_container.status == "running":
                     raise RuntimeError(f"Stop {container_name} before migrating user {user_id}")
-                existing_container.remove()
             except docker.errors.NotFound:
-                pass
+                existing_container = None
 
-        workspace, host_keys, _scratch_home, _scratch_tmp = prepare_user_storage(
-            user_id, workspace_gb or 2, temp_storage_gb or 100,
+        host_key_volume = f"gpu-hostkeys-{user_id}"
+        will_copy = bool(
+            (workspace_volume and source_volume(workspace_volume, user_id, legacy_volume))
+            or source_volume(host_key_volume, user_id)
+        )
+        if not will_copy:
+            print(f"user {user_id}: no legacy volumes")
+            continue
+        if existing_container is not None:
+            existing_container.remove()
+
+        workspace, host_keys, _scratch_home, _scratch_tmp, _scratch_etc = prepare_user_storage(
+            user_id, workspace_gb or 2, temp_storage_gb or 100, convert=True,
         )
         copied = []
         if workspace_volume and source_volume(workspace_volume, user_id, legacy_volume):
             copy_volume(workspace_volume, workspace)
             copied.append(workspace_volume)
-        host_key_volume = f"gpu-hostkeys-{user_id}"
         if source_volume(host_key_volume, user_id):
             copy_volume(host_key_volume, host_keys)
             copied.append(host_key_volume)

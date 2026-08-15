@@ -6,9 +6,9 @@ from database import get_connection
 from manager import (
     managed_containers,
     provision_user,
+    release_user_storage,
     remove_container,
     start_container,
-    teardown_scratch,
 )
 
 LOCK_ID = 72819431
@@ -205,7 +205,7 @@ def reconcile():
                 container.stop(timeout=15)
                 record_transition("container_stopped", int(container.labels["aiml.user_id"]), container.name)
     for user_id in unretained_user_ids():
-        teardown_scratch(user_id)
+        release_user_storage(user_id)
     if desired and not any(c.name == desired_name and c.status == "running" for c in containers):
         start_container(
             desired_name, desired[0],

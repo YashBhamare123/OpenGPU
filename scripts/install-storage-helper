@@ -42,8 +42,8 @@ pathlib.Path(destination).write_text(text.replace(token, "workspace_root=" + jso
 PY
 install -m 0755 -o root -g root "$tmp_helper" "$helper"
 
-printf '%s ALL=(root) NOPASSWD: %s prepare [0-9]* [0-9]* [0-9]*, %s teardown-scratch [0-9]*\n' \
-  "$SUDO_USER" "$helper" "$helper" > "$sudoers_file"
+printf '%s ALL=(root) NOPASSWD: %s prepare [0-9]* [0-9]* [0-9]*, %s prepare [0-9]* [0-9]* [0-9]* convert, %s release [0-9]*\n' \
+  "$SUDO_USER" "$helper" "$helper" "$helper" > "$sudoers_file"
 chmod 0440 "$sudoers_file"
 visudo -cf "$sudoers_file"
 

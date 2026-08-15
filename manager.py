@@ -13,6 +13,7 @@ from config import settings
 from mailer import send_credentials
 
 APP_LABEL = "aiml-gpu-reservation"
+SEED_LABEL = "aiml-storage-seed"
 _client = None
 
 
@@ -82,7 +83,8 @@ def _run_storage_helper(*args: str, timeout: int) -> None:
 
 def prepare_user_storage(
     user_id: int, workspace_gb: int = 2, temp_storage_gb: int = 100,
-) -> tuple[Path, Path, Path, Path]:
+    convert: bool = False,
+) -> tuple[Path, Path, Path, Path, Path]:
     if user_id < 1:
         raise ValueError("User ID must be positive")
     if workspace_gb < 1 or workspace_gb > 199:
@@ -96,19 +98,46 @@ def prepare_user_storage(
     host_keys = user_root / "ssh-host-keys"
     scratch_home = user_root / "scratch" / "home"
     scratch_tmp = user_root / "scratch" / "tmp"
-    _run_storage_helper(
-        "prepare", str(user_id), str(workspace_gb), str(temp_storage_gb), timeout=300,
+    scratch_etc = user_root / "scratch" / "etc"
+    helper_args = ["prepare", str(user_id), str(workspace_gb), str(temp_storage_gb)]
+    if convert:
+        helper_args.append("convert")
+    _run_storage_helper(*helper_args, timeout=300)
+    return workspace, host_keys, scratch_home, scratch_tmp, scratch_etc
+
+
+def seed_scratch_etc(scratch_etc: Path) -> None:
+    container = get_client().containers.create(
+        image=settings.docker_image,
+        entrypoint="/bin/bash",
+        command=[
+            "-c",
+            "if [ ! -f /destination/passwd ]; then cp -a /etc/. /destination/; fi",
+        ],
+        volumes={str(scratch_etc): {"bind": "/destination", "mode": "rw"}},
+        labels={"app": SEED_LABEL},
+        network_disabled=True,
     )
-    return workspace, host_keys, scratch_home, scratch_tmp
+    try:
+        container.start()
+        result = container.wait(timeout=60)
+        if result.get("StatusCode", 1) != 0:
+            logs = container.logs().decode("utf-8", errors="replace")[-2000:]
+            raise RuntimeError(f"Failed to seed container /etc: {logs}")
+    finally:
+        try:
+            container.remove(force=True)
+        except docker.errors.DockerException:
+            pass
 
 
-def teardown_scratch(user_id: int, attempts: int = 3) -> None:
+def release_user_storage(user_id: int, attempts: int = 3) -> None:
     if user_id < 1:
         raise ValueError("User ID must be positive")
     last_error = None
     for attempt in range(attempts):
         try:
-            _run_storage_helper("teardown-scratch", str(user_id), timeout=60)
+            _run_storage_helper("release", str(user_id), timeout=60)
             return
         except Exception as exc:  # noqa: BLE001
             last_error = exc
@@ -117,9 +146,13 @@ def teardown_scratch(user_id: int, attempts: int = 3) -> None:
     raise last_error
 
 
+def teardown_scratch(user_id: int, attempts: int = 3) -> None:
+    release_user_storage(user_id, attempts=attempts)
+
+
 def user_storage_paths(
     user_id: int, workspace_gb: int = 2, temp_storage_gb: int = 100,
-) -> tuple[Path, Path, Path, Path]:
+) -> tuple[Path, Path, Path, Path, Path]:
     return prepare_user_storage(user_id, workspace_gb, temp_storage_gb)
 
 
@@ -138,9 +171,10 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
         if container.status == "running":
             raise RuntimeError("Refusing to replace a running provisioning container")
         container.remove()
-    workspace, host_keys, scratch_home, scratch_tmp = prepare_user_storage(
-        user_id, workspace_gb, temp_storage_gb,
+    workspace, host_keys, scratch_home, scratch_tmp, scratch_etc = prepare_user_storage(
+        user_id, workspace_gb, temp_storage_gb, convert=True,
     )
+    seed_scratch_etc(scratch_etc)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind((settings.docker_bind_ip, ssh_port))
     container = get_client().containers.create(
@@ -154,6 +188,7 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
             str(host_keys): {"bind": "/etc/ssh/host_keys", "mode": "rw"},
             str(scratch_home): {"bind": f"/home/{username}", "mode": "rw"},
             str(scratch_tmp): {"bind": "/tmp", "mode": "rw"},
+            str(scratch_etc): {"bind": "/etc", "mode": "rw"},
         },
         environment={"TEAM_NAME": username, "TEAM_PASSWORD_HASH": password_hash,
                      "WORKSPACE_GB": str(workspace_gb), "TEMP_STORAGE_GB": str(temp_storage_gb)},
@@ -163,6 +198,8 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
         pids_limit=settings.pids_limit,
         shm_size=settings.shm_size,
         restart_policy={"Name": "no"},
+        read_only=True,
+        tmpfs={"/run": "rw,nosuid,nodev,mode=755"},
     )
     if email_credentials:
         try:
@@ -170,9 +207,12 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
         except Exception:
             # Plaintext is deliberately not retained. Recreate with a new password on retry.
             try:
-                container.remove(force=True)
-            except docker.errors.DockerException:
-                pass
+                remove_container(container)
+            except Exception:  # noqa: BLE001
+                try:
+                    container.remove(force=True)
+                except docker.errors.DockerException:
+                    pass
             raise
     return password_hash
 
@@ -184,10 +224,13 @@ def managed_containers():
 def start_container(
     name: str, user_id: int, workspace_gb: int = 2, temp_storage_gb: int = 100,
 ) -> None:
-    prepare_user_storage(user_id, workspace_gb, temp_storage_gb)
     container = _get_owned_container(name, user_id)
     if container is None:
         raise RuntimeError(f"Managed container {name} is missing")
+    _workspace, _host_keys, _scratch_home, _scratch_tmp, scratch_etc = prepare_user_storage(
+        user_id, workspace_gb, temp_storage_gb,
+    )
+    seed_scratch_etc(scratch_etc)
     container.start()
 
 
@@ -211,4 +254,4 @@ def remove_container(container, timeout: int = 15) -> None:
     if container.status == "running":
         stop_container(container, timeout=timeout)
     container.remove()
-    teardown_scratch(user_id)
+    release_user_storage(user_id)

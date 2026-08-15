@@ -98,7 +98,7 @@ def test_reconcile_retries_scratch_teardown_for_unretained_users(monkeypatch):
     monkeypatch.setattr(scheduler, "retained_container_names", lambda: set())
     monkeypatch.setattr(scheduler, "managed_containers", list)
     monkeypatch.setattr(scheduler, "unretained_user_ids", lambda: [4, 7])
-    monkeypatch.setattr(scheduler, "teardown_scratch", lambda user_id: events.append(user_id))
+    monkeypatch.setattr(scheduler, "release_user_storage", lambda user_id: events.append(user_id))
     monkeypatch.setattr(scheduler, "record_transition", lambda *args: None)
     scheduler.reconcile()
     assert events == [4, 7]

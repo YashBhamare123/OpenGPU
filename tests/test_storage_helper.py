@@ -11,8 +11,11 @@ state=${OPENGPU_STUB_STATE:?}
 mkdir -p "$state/loops"
 touch "$state/mounted"
 case "$cmd" in
-  mkfs.ext4|resize2fs|e2fsck)
+  mkfs.ext4|resize2fs)
     exit 0
+    ;;
+  e2fsck)
+    exit "${OPENGPU_E2FSCK_RC:-0}"
     ;;
   findmnt)
     target=""
@@ -31,20 +34,29 @@ case "$cmd" in
     ;;
   umount)
     dir=${*: -1}
+    if [[ -d "$dir" ]]; then
+      find "$dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    fi
     if [[ -f "$state/mounted" ]]; then
       grep -Fxv "$dir" "$state/mounted" > "$state/mounted.next" || true
       mv "$state/mounted.next" "$state/mounted"
     fi
     ;;
   losetup)
+    mkdir -p "$state/loops"
     if [[ "$1" == "--find" ]]; then
       img=${*: -1}
-      printf '%s\n' "$img" > "$state/loops/loop0"
-      echo /dev/loop0
+      n=0
+      while [[ -e "$state/loops/loop$n" ]]; do
+        n=$((n + 1))
+      done
+      printf '%s\n' "$img" > "$state/loops/loop$n"
+      echo "/dev/loop$n"
       exit 0
     fi
     if [[ "$1" == "--detach" ]]; then
-      rm -f "$state/loops/loop0"
+      dev=$(basename "$2")
+      rm -f "$state/loops/$dev"
       exit 0
     fi
     if [[ "$1" == "-c" ]]; then
@@ -57,8 +69,13 @@ case "$cmd" in
         *) shift ;;
       esac
     done
-    if [[ -n "$img" && -f "$state/loops/loop0" && "$(cat "$state/loops/loop0")" == "$img" ]]; then
-      echo /dev/loop0
+    if [[ -n "$img" ]]; then
+      for loop_file in "$state/loops"/loop*; do
+        [[ -f "$loop_file" ]] || continue
+        if [[ "$(cat "$loop_file")" == "$img" ]]; then
+          echo "/dev/$(basename "$loop_file")"
+        fi
+      done
     fi
     ;;
   *)
@@ -107,22 +124,41 @@ def test_prepare_is_idempotent_and_teardown_removes_scratch(tmp_path):
     assert (user / "ssh-host-keys").is_dir()
     assert (user / "scratch" / "home").is_dir()
     assert (user / "scratch" / "tmp").is_dir()
+    assert (user / "scratch" / "etc").is_dir()
     second = _run(["prepare", "7", "2", "3"], env)
     assert second.returncode == 0
-    _run(["teardown-scratch", "7"], env)
+    _run(["release", "7"], env)
     assert not (user / "scratch.img").exists()
     assert (user / "workspace.img").exists()
     assert (user / "ssh-host-keys").is_dir()
+    mounted = (tmp_path / "stub-state" / "mounted").read_text()
+    assert str(user / "workspace") not in mounted.splitlines()
+    assert str(user / "scratch") not in mounted.splitlines()
 
 
 def test_prepare_grows_workspace_and_refuses_shrink(tmp_path):
     root, env = _stub_env(tmp_path)
     _run(["prepare", "8", "2", "1"], env)
+    _run(["release", "8"], env)
+    env["OPENGPU_E2FSCK_RC"] = "1"
     _run(["prepare", "8", "4", "1"], env)
     assert (root / "users" / "8" / "workspace.img").stat().st_size == 4 * 1024 ** 3
     failed = _run(["prepare", "8", "1", "1"], env, check=False)
     assert failed.returncode != 0
     assert "Refusing to shrink" in failed.stderr
+
+
+def test_prepare_refuses_directory_convert_without_flag(tmp_path):
+    root, env = _stub_env(tmp_path)
+    workspace = root / "users" / "9" / "workspace"
+    workspace.mkdir(parents=True)
+    (workspace / "keep-me.txt").write_text("data")
+    failed = _run(["prepare", "9", "2", "1"], env, check=False)
+    assert failed.returncode != 0
+    assert "convert" in failed.stderr
+    converted = _run(["prepare", "9", "2", "1", "convert"], env)
+    assert converted.returncode == 0
+    assert (root / "users" / "9" / "workspace.img").is_file()
 
 
 def test_prepare_rejects_invalid_argv(tmp_path):

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if ! id "$TEAM_NAME" >/dev/null 2>&1; then
-    useradd -M -d "/home/$TEAM_NAME" -s /bin/bash "$TEAM_NAME"
+    useradd -M -l -d "/home/$TEAM_NAME" -s /bin/bash "$TEAM_NAME"
 fi
 
 if [[ ! "${WORKSPACE_GB:-}" =~ ^[1-9][0-9]*$ || ! "${TEMP_STORAGE_GB:-}" =~ ^[1-9][0-9]*$ ]]; then

@@ -121,7 +121,8 @@ if [[ "$storage_helper" != /* || ! -x "$storage_helper" ]]; then
   exit 1
 fi
 if ! sudo -n -l "$storage_helper" prepare 1 2 3 >/dev/null 2>&1 \
-  || ! sudo -n -l "$storage_helper" teardown-scratch 1 >/dev/null 2>&1; then
+  || ! sudo -n -l "$storage_helper" prepare 1 2 3 convert >/dev/null 2>&1 \
+  || ! sudo -n -l "$storage_helper" release 1 >/dev/null 2>&1; then
   echo "The scheduler cannot run STORAGE_HELPER without a password. Reinstall: sudo ./scripts/install-storage-helper" >&2
   exit 1
 fi

@@ -20,13 +20,19 @@ SSH port         next ssh_port_seq value
 The current storage implementation does not create the legacy-named workspace volume. It derives host paths below `WORKSPACE_ROOT/users/<ID>/`:
 
 ```text
-workspace/       -> /workspace
+workspace.img    loop-mounted at workspace/  -> /workspace
+scratch.img      loop-mounted at scratch/
+  scratch/home   -> /home/gpu<ID>
+  scratch/tmp    -> /tmp
+  scratch/etc    -> /etc
 ssh-host-keys/   -> /etc/ssh/host_keys
 ```
 
-Before Docker provisioning, the scheduler invokes the narrowly scoped root helper configured by `STORAGE_HELPER`. The helper creates the paths on the XFS-backed Docker filesystem, assigns a stable project ID, and applies a 1 GB hard quota to `workspace/`. Docker independently applies `CONTAINER_STORAGE_LIMIT` (30 GB by default) to the disposable container writable layer.
+Before Docker provisioning, the scheduler invokes the narrowly scoped root helper configured by `STORAGE_HELPER`. The helper creates sparse ext4 images, loop-mounts them on the host, and Docker only bind-mounts the resulting directories. Workspace images grow in place and are never shrunk. Scratch disks are sized to the reservation and removed when the user has no current or future booking; the helper also unmounts idle workspace images so loop devices are released. Persistent `/workspace` data remains in `workspace.img`.
 
-Provisioning generates a new password and SHA-512-compatible Linux password hash, creates a stopped labelled container, and emails credentials when the job purpose requires it. Only the hash is stored. If email delivery fails, the incomplete container is removed and retry generates a different password.
+User containers use a read-only root filesystem plus `/run` tmpfs. Writable paths are the bind-mounted workspace, home, tmp, a scratch copy of `/etc`, and SSH host keys. That replaces overlay `storage_opt` size caps, which required XFS project quotas.
+
+Provisioning generates a new password and SHA-512-compatible Linux password hash, creates a stopped labelled container, and emails credentials when the job purpose requires it. Only the hash is stored. If email delivery fails, the incomplete container is removed and scratch storage is released; retry generates a different password.
 
 ## Reconciliation
 
@@ -40,8 +46,9 @@ It then applies these rules:
 
 1. Remove a managed container that has no current or future reservation.
 2. Stop a retained future container if it is unexpectedly running.
-3. Start the desired active container if it is not running.
-4. Record each transition in `audit_events`.
+3. Release leftover scratch disks and unmount idle workspace images for users with no current or future reservation.
+4. Start the desired active container if it is not running, remounting its images first.
+5. Record each transition in `audit_events`.
 
 Consequently, cancellation and expiry delete the container filesystem. Bind-mounted workspace and host-key directories survive.
 
@@ -52,7 +59,7 @@ Consequently, cancellation and expiry delete the container filesystem. Bind-moun
 - Host storage paths are derived only from a positive numeric database ID and an absolute configured root.
 - A running provisioning container is not replaced.
 - Published SSH ports are probed before creation.
-- Containers request one GPU, use configured CPU/memory/PID/shared-memory/storage limits, and set `restart=no`.
+- Containers request one GPU, use configured CPU/memory/PID/shared-memory limits, a read-only root filesystem, and `restart=no`.
 - SSH host keys are generated in their persistent bind mount, not baked into the image.
 
 ## Changing lifecycle code

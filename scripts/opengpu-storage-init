@@ -8,8 +8,8 @@ if [[ "$workspace_root" == "__OPENGPU_WORKSPACE_ROOT__" ]]; then
 fi
 
 usage() {
-  echo "Usage: opengpu-storage-init prepare USER_ID WORKSPACE_GB TEMP_GB" >&2
-  echo "       opengpu-storage-init teardown-scratch USER_ID" >&2
+  echo "Usage: opengpu-storage-init prepare USER_ID WORKSPACE_GB TEMP_GB [convert]" >&2
+  echo "       opengpu-storage-init release USER_ID" >&2
   exit 2
 }
 
@@ -74,7 +74,7 @@ create_sparse_ext4() {
 
 grow_image() {
   local img=$1 wanted_gb=$2
-  local current_bytes wanted_bytes loop
+  local current_bytes wanted_bytes loop fsck_status
   current_bytes=$(stat -c '%s' -- "$img")
   wanted_bytes=$(bytes_for_gb "$wanted_gb")
   if (( current_bytes > wanted_bytes )); then
@@ -90,7 +90,12 @@ grow_image() {
     losetup -c "$loop"
     resize2fs -- "$loop" >/dev/null
   else
-    e2fsck -f -p -- "$img" >/dev/null
+    fsck_status=0
+    e2fsck -f -p -- "$img" >/dev/null || fsck_status=$?
+    if (( fsck_status > 2 )); then
+      echo "e2fsck failed for $(basename "$img") (status ${fsck_status})" >&2
+      exit 1
+    fi
     resize2fs -- "$img" >/dev/null
   fi
 }
@@ -153,12 +158,14 @@ ensure_scratch_layout() {
   local scratch=$1
   install_dir 0755 "$scratch/home"
   install_dir 1777 "$scratch/tmp"
+  install_dir 0750 "$scratch/etc"
   chmod 1777 -- "$scratch/tmp"
 }
 
 prepare() {
-  local user_id=$1 workspace_gb=$2 temp_gb=$3
+  local user_id=$1 workspace_gb=$2 temp_gb=$3 allow_convert=${4:-}
   local user_root workspace host_keys scratch workspace_img scratch_img current_bytes wanted_bytes
+  local workspace_has_files=0
 
   if (( workspace_gb + temp_gb > 200 )); then
     echo "Workspace and temporary storage can total at most 200 GB" >&2
@@ -184,9 +191,22 @@ prepare() {
   install_dir 0750 "$scratch"
 
   if [[ ! -f "$workspace_img" ]]; then
+    if ! is_mountpoint "$workspace" && [[ -d "$workspace" ]] \
+      && [[ -n "$(find "$workspace" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)" ]]; then
+      workspace_has_files=1
+    fi
+    if (( workspace_has_files )) && [[ "$allow_convert" != convert ]]; then
+      echo "Refusing to convert non-empty workspace directory $workspace to an image." >&2
+      echo "Remove the reservation container, then rerun prepare with convert." >&2
+      exit 1
+    fi
     create_sparse_ext4 "$workspace_img" "$workspace_gb"
-    copy_directory_into_image "$workspace" "$workspace_img"
-    replace_dir_with_mount "$workspace" "$workspace_img"
+    if (( workspace_has_files )); then
+      copy_directory_into_image "$workspace" "$workspace_img"
+      replace_dir_with_mount "$workspace" "$workspace_img"
+    else
+      mount_image "$workspace_img" "$workspace"
+    fi
   else
     grow_image "$workspace_img" "$workspace_gb"
     mount_image "$workspace_img" "$workspace"
@@ -210,9 +230,9 @@ prepare() {
     "$user_id" "$workspace" "$workspace_gb" "$scratch" "$temp_gb"
 }
 
-teardown_scratch() {
+release_user_storage() {
   local user_id=$1
-  local user_root scratch scratch_img
+  local user_root scratch scratch_img workspace workspace_img
 
   if [[ "$workspace_root" != /* ]]; then
     echo "WORKSPACE_ROOT must be an absolute path" >&2
@@ -222,6 +242,8 @@ teardown_scratch() {
   user_root="$workspace_root/users/$user_id"
   scratch="$user_root/scratch"
   scratch_img="$user_root/scratch.img"
+  workspace="$user_root/workspace"
+  workspace_img="$user_root/workspace.img"
 
   if [[ -d "$scratch" ]]; then
     unmount_dir "$scratch"
@@ -230,7 +252,13 @@ teardown_scratch() {
     detach_loops "$scratch_img"
     rm -f -- "$scratch_img"
   fi
-  printf 'user_id=%s scratch_removed=1\n' "$user_id"
+  if [[ -d "$workspace" ]]; then
+    unmount_dir "$workspace"
+  fi
+  if [[ -e "$workspace_img" ]]; then
+    detach_loops "$workspace_img"
+  fi
+  printf 'user_id=%s scratch_removed=1 workspace_unmounted=1\n' "$user_id"
 }
 
 if [[ $# -lt 2 ]]; then
@@ -242,16 +270,19 @@ shift
 
 case "$command" in
   prepare)
-    if [[ $# -ne 3 ]] || ! positive_id "$1" || ! storage_gb "$2" || ! storage_gb "$3"; then
+    if [[ $# -eq 3 ]] && positive_id "$1" && storage_gb "$2" && storage_gb "$3"; then
+      prepare "$1" "$2" "$3"
+    elif [[ $# -eq 4 && "$4" == convert ]] && positive_id "$1" && storage_gb "$2" && storage_gb "$3"; then
+      prepare "$1" "$2" "$3" convert
+    else
       usage
     fi
-    prepare "$1" "$2" "$3"
     ;;
-  teardown-scratch)
+  release)
     if [[ $# -ne 1 ]] || ! positive_id "$1"; then
       usage
     fi
-    teardown_scratch "$1"
+    release_user_storage "$1"
     ;;
   *)
     usage
