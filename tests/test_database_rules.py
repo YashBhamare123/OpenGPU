@@ -120,6 +120,7 @@ def test_immediate_idempotent_api_retry_returns_original_while_provisioning(monk
         setup.commit()
 
     monkeypatch.setattr(api, "get_connection", lambda: psycopg.connect(TEST_URL))
+    monkeypatch.setattr(api, "smtp_enabled", lambda: True)
     start = datetime.now(timezone.utc) + timedelta(hours=1)
     request = api.ReservationRequest(start_time=start, end_time=start + timedelta(minutes=30))
     user = {"id": user_id}
@@ -147,6 +148,7 @@ def test_first_reservation_provisions_environment_in_single_request(monkeypatch)
         setup.commit()
 
     monkeypatch.setattr(api, "get_connection", lambda: psycopg.connect(TEST_URL))
+    monkeypatch.setattr(api, "smtp_enabled", lambda: True)
     start = datetime.now(timezone.utc) + timedelta(hours=1)
     request = api.ReservationRequest(start_time=start, end_time=start + timedelta(minutes=30))
 
