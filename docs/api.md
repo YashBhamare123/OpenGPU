@@ -10,7 +10,7 @@ OpenGPU serves JSON endpoints and the static frontend from one origin. Authentic
 {"email": "person@example.edu"}
 ```
 
-Returns `202` with `approved` and the public `ACCESS_CONTACT_EMAIL` as `admin_contact`. Approved users receive a code and are limited to five generated challenges per hour; unapproved users are directed to the public contact by the frontend. Private `ADMIN_EMAILS` values are never returned.
+Returns `202` with `approved` and the public `ACCESS_CONTACT_EMAIL` as `admin_contact`. Approved addresses receive a code by email when SMTP is configured. Without SMTP, only `ADMIN_EMAILS` can request a code, and it prints on the host terminal. Unapproved addresses are directed to the public contact by the frontend. Private `ADMIN_EMAILS` values are never returned.
 
 ### `POST /auth/verify-code`
 
@@ -28,7 +28,7 @@ Revokes the current session when present, deletes the cookie, and returns `204`.
 
 ### `GET /me`
 
-Returns the authenticated user's ID, email, generated SSH username, display name, provisioning state, and `is_admin` flag. Returns `401` without a valid enabled session.
+Returns the authenticated user's ID, email, generated SSH username, display name, provisioning state, `is_admin`, and `self_booking` (false when SMTP is skipped). Returns `401` without a valid enabled session.
 
 ### `GET /reservations`
 
@@ -62,7 +62,7 @@ Responses:
 - `202`: account provisioning queued; no reservation was created
 - `400`: invalid time ordering or duration
 - `401`: authentication required
-- `403`: user disabled
+- `403`: user disabled, or self-service booking while SMTP is skipped
 - `409`: overlap, second booking, conflicting idempotency reuse, or another database conflict
 - `422`: malformed input, missing timezone, or invalid header length
 

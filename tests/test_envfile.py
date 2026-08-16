@@ -53,28 +53,42 @@ def test_write_env_skips_optional_and_hides_secrets(tmp_path, monkeypatch, capsy
 
 def test_prompt_skip_keeps_optional_empty(tmp_path, monkeypatch):
     _preserve_env(monkeypatch)
-    for key in ("SMTP_USER", "SMTP_PASSWORD", "NGROK_AUTHTOKEN", "PUBLIC_BASE_URL", "ACCESS_CONTACT_EMAIL"):
+    for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "NGROK_AUTHTOKEN", "PUBLIC_BASE_URL", "ACCESS_CONTACT_EMAIL"):
         monkeypatch.delenv(key, raising=False)
     path = tmp_path / ".env"
     chosen = envfile.configure_env(path, input_fn=_answer, getpass_fn=_answer)
+    assert "SMTP_HOST" not in chosen
     assert "SMTP_USER" not in chosen
     assert "NGROK_AUTHTOKEN" not in chosen
     assert chosen["DOCKER_IMAGE"] == "yashbhamare123/opengpu:ml"
     assert "SMTP_PASSWORD=" not in path.read_text()
 
 
+def test_skip_smtp_omits_relay_fields(tmp_path, monkeypatch):
+    _preserve_env(monkeypatch)
+    for key in ("SMTP_HOST", "SMTP_PORT", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD"):
+        monkeypatch.delenv(key, raising=False)
+    path = tmp_path / ".env"
+    values = {name: value for name, value in REQUIRED.items() if not name.startswith("SMTP_")}
+    values["SMTP_HOST"] = "skip"
+    chosen = envfile.configure_env(path, values=values)
+    assert "SMTP_HOST" not in chosen
+    assert "SMTP_FROM" not in chosen
+    assert "SMTP_HOST=" not in path.read_text()
+
+
 def test_required_reprompts_on_empty(tmp_path, monkeypatch):
     _preserve_env(monkeypatch)
-    monkeypatch.delenv("SMTP_HOST", raising=False)
-    pending = {"SMTP_HOST": 1}
+    monkeypatch.delenv("ADMIN_EMAILS", raising=False)
+    pending = {"ADMIN_EMAILS": 1}
     path = tmp_path / ".env"
 
     def fake(prompt):
         return _answer(prompt, empty_first=pending)
 
     chosen = envfile.configure_env(path, input_fn=fake, getpass_fn=fake)
-    assert chosen["SMTP_HOST"] == REQUIRED["SMTP_HOST"]
-    assert pending["SMTP_HOST"] == 0
+    assert chosen["ADMIN_EMAILS"] == REQUIRED["ADMIN_EMAILS"]
+    assert pending["ADMIN_EMAILS"] == 0
 
 
 def test_default_env_path_uses_existing_cwd_env(tmp_path, monkeypatch):

@@ -20,7 +20,7 @@ from pydantic import BaseModel, EmailStr, field_validator
 
 from config import settings
 from database import get_connection
-from mailer import send_cancellation, send_otp
+from mailer import deliver_cancellation, deliver_otp, smtp_enabled
 from paths import ROOT, frontend_path
 from security import (
     generate_otp,
@@ -104,7 +104,8 @@ def current_user(session: str | None = Cookie(default=None)) -> dict:
         email = str(row[1])
         return {"id": row[0], "email": email, "username": row[2],
                 "display_name": row[3], "provisioning_state": row[5],
-                "is_admin": normalize_email(email) in settings.admin_emails}
+                "is_admin": normalize_email(email) in settings.admin_emails,
+                "self_booking": smtp_enabled()}
     finally:
         conn.close()
 
@@ -147,7 +148,7 @@ def request_code(request: EmailRequest):
         with conn.cursor() as cursor:
             cursor.execute("SELECT id FROM teams WHERE email=%s AND enabled", (email,))
             row = cursor.fetchone()
-            if row:
+            if row and (smtp_enabled() or email in settings.admin_emails):
                 team_id = row[0]
                 cursor.execute(
                     "SELECT COUNT(*) FROM auth_challenges WHERE team_id=%s AND created_at>NOW()-INTERVAL '1 hour'",
@@ -160,12 +161,14 @@ def request_code(request: EmailRequest):
                         (team_id, hash_secret(code), otp_expiry()),
                     )
                     audit(cursor, "otp_requested", team_id)
+            else:
+                row = None
         conn.commit()
     finally:
         conn.close()
     if code:
         try:
-            send_otp(email, code)
+            deliver_otp(email, code)
         except Exception:  # noqa: BLE001, S110
             # Keep the response generic and avoid exposing SMTP details.
             pass
@@ -434,7 +437,7 @@ def admin_cancel_reservation(reservation_id: int, admin: Annotated[dict, Depends
                   {"reservation_id": reservation_id, "cancelled_by_admin": admin["id"]})
         conn.commit()
         try:
-            send_cancellation(str(row[1]), row[2], row[3])
+            deliver_cancellation(str(row[1]), row[2], row[3])
         except Exception:  # noqa: BLE001, S110
             # Cancellation is authoritative even if the SMTP relay is unavailable.
             pass
@@ -445,6 +448,11 @@ def admin_cancel_reservation(reservation_id: int, admin: Annotated[dict, Depends
 @app.post("/reservations")
 def create_reservation(request: ReservationRequest, user: Annotated[dict, Depends(current_user)],
                        idempotency_key: str = Header(min_length=8, max_length=128)):
+    if not smtp_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Self-service booking is disabled without email. An administrator must book this GPU.",
+        )
     if request.start_time < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Reservation cannot start in the past")
     if request.end_time <= request.start_time:
@@ -525,7 +533,7 @@ def cancel_reservation(reservation_id: int, user: Annotated[dict, Depends(curren
             audit(cursor, "reservation_cancelled", user["id"], {"reservation_id": reservation_id})
         conn.commit()
         try:
-            send_cancellation(user["email"], row[1], row[2])
+            deliver_cancellation(user["email"], row[1], row[2])
         except Exception:  # noqa: BLE001, S110
             # Cancellation is authoritative even if the SMTP relay is unavailable.
             pass

@@ -14,7 +14,8 @@ The global state tracks the authenticated user, reservations, viewed date, live 
 ## Main flows
 
 - On load, `/me` determines whether to show login or the booking application.
-- Login requests and verifies an emailed code, then reloads user and reservation state.
+- Login requests and verifies a code (emailed, or printed on the host for administrators when SMTP is skipped), then reloads user and reservation state.
+- When `/me` reports `self_booking` false, the booking composer stays locked for non-administrators.
 - The seven-day strip changes the viewed day; top arrows move by week.
 - The 24-hour timeline renders availability, other reservations, the user's reservation, and the live selection.
 - Start time accepts any minute. Duration changes in 15-minute increments from 15 minutes to the `RESERVATION_LIMIT_MINUTES` value returned by `/me`.

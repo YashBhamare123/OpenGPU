@@ -32,7 +32,7 @@ Before Docker provisioning, the scheduler invokes the narrowly scoped root helpe
 
 User containers use a read-only root filesystem plus `/run` tmpfs. Writable paths are the bind-mounted workspace, home, tmp, a scratch copy of `/etc`, and SSH host keys. That replaces overlay `storage_opt` size caps, which required XFS project quotas.
 
-Provisioning generates a new password and SHA-512-compatible Linux password hash, creates a stopped labelled container, and emails credentials when the job purpose requires it. Only the hash is stored. If email delivery fails, the incomplete container is removed and scratch storage is released; retry generates a different password.
+Provisioning generates a new password and SHA-512-compatible Linux password hash, creates a stopped labelled container, and delivers credentials by email or by printing them on the host when SMTP is skipped. Only the hash is stored. If delivery fails, the incomplete container is removed and scratch storage is released; retry generates a different password.
 
 ## Reconciliation
 

@@ -3,6 +3,8 @@ set -Eeuo pipefail
 
 PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
+ENV_FILE="${OPENGPU_ENV_FILE:-$PROJECT_DIR/.env}"
+export OPENGPU_ENV_FILE="$ENV_FILE"
 
 CHECK_ONLY=false
 BUILD_IMAGE=false
@@ -37,29 +39,48 @@ if [[ "$START_TUNNEL" == true ]]; then
     echo "Required command is missing: ngrok" >&2
     exit 1
   fi
-  ngrok_domain="$(sed -n 's/^NGROK_DOMAIN=//p' .env | tail -n 1)"
+  ngrok_domain="$(sed -n 's/^NGROK_DOMAIN=//p' "$ENV_FILE" | tail -n 1)"
   if [[ ! "$ngrok_domain" =~ ^[A-Za-z0-9.-]+\.ngrok-free\.(app|dev)$ ]]; then
     echo "NGROK_DOMAIN must be an assigned ngrok-free.app or ngrok-free.dev hostname." >&2
     exit 1
   fi
+  OPENGPU_ENV_FILE="$ENV_FILE" python3 - <<'PY'
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+env_file = Path(os.environ["OPENGPU_ENV_FILE"])
+load_dotenv(env_file, override=False)
+token = (os.environ.get("NGROK_AUTHTOKEN") or os.environ.get("NGROK_TOKEN") or "").strip()
+if not token:
+    raise SystemExit("Set NGROK_AUTHTOKEN or NGROK_TOKEN in the environment file")
+result = subprocess.run(["ngrok", "config", "add-authtoken", token], capture_output=True, text=True)
+if result.returncode != 0:
+    detail = (result.stderr or result.stdout).strip() or "ngrok config failed"
+    print(detail[:300], file=sys.stderr)
+    raise SystemExit(1)
+PY
   if ! ngrok config check >/dev/null; then
-    echo "ngrok is not configured. Run: ngrok config add-authtoken YOUR_TOKEN" >&2
+    echo "ngrok is not configured. Set NGROK_AUTHTOKEN or NGROK_TOKEN." >&2
     exit 1
   fi
-  if ! grep -Fq "https://$ngrok_domain" .env; then
+  if ! grep -Fq "https://$ngrok_domain" "$ENV_FILE"; then
     echo "ALLOWED_ORIGINS must include https://$ngrok_domain" >&2
     exit 1
   fi
 fi
 
-if [[ ! -f .env ]]; then
-  echo "Missing $PROJECT_DIR/.env. Copy .env.example and fill the required values." >&2
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Missing $ENV_FILE. Copy .env.example and fill the required values." >&2
   exit 1
 fi
 
-env_mode="$(stat -c '%a' .env)"
+env_mode="$(stat -c '%a' "$ENV_FILE")"
 if [[ "$env_mode" != "600" ]]; then
-  echo "Refusing to use .env with mode $env_mode; run: chmod 600 $PROJECT_DIR/.env" >&2
+  echo "Refusing to use $ENV_FILE with mode $env_mode; run: chmod 600 $ENV_FILE" >&2
   exit 1
 fi
 
@@ -106,17 +127,17 @@ if [[ "$CHECK_ONLY" == true ]]; then
   exit 0
 fi
 
-api_host="$(python3 - <<'PY'
+api_host="$(OPENGPU_ENV_FILE="$ENV_FILE" python3 - <<'PY'
 import os
 from dotenv import load_dotenv
-load_dotenv(dotenv_path=".env")
+load_dotenv(os.environ["OPENGPU_ENV_FILE"])
 print(os.environ.get("API_HOST", "127.0.0.1"))
 PY
 )"
-api_port="$(python3 - <<'PY'
+api_port="$(OPENGPU_ENV_FILE="$ENV_FILE" python3 - <<'PY'
 import os
 from dotenv import load_dotenv
-load_dotenv(dotenv_path=".env")
+load_dotenv(os.environ["OPENGPU_ENV_FILE"])
 print(os.environ.get("API_PORT", "8000"))
 PY
 )"

@@ -22,12 +22,12 @@ class EnvField:
 
 
 FIELDS: tuple[EnvField, ...] = (
-    EnvField("SERVER_IP", "Address advertised in SSH emails", required=True, default="127.0.0.1"),
+    EnvField("SERVER_IP", "Address advertised in the SSH command", required=True, default="127.0.0.1"),
     EnvField("DOCKER_BIND_IP", "Host interface Docker publishes SSH on", required=True, default="127.0.0.1"),
     EnvField("WORKSPACE_ROOT", "Directory for workspace and scratch images", required=True, default="/var/lib/docker/opengpu-workspaces"),
-    EnvField("SMTP_HOST", "SMTP relay hostname", required=True),
-    EnvField("SMTP_PORT", "SMTP port", required=True, default="587"),
-    EnvField("SMTP_FROM", "From address for login and SSH emails", required=True),
+    EnvField("SMTP_HOST", "SMTP relay hostname; skip to print SSH passwords on the host"),
+    EnvField("SMTP_PORT", "SMTP port", default="587"),
+    EnvField("SMTP_FROM", "From address for login and SSH emails"),
     EnvField("ALLOWED_ORIGINS", "Comma-separated browser origins", required=True),
     EnvField("COOKIE_SECURE", "true when serving over HTTPS", required=True, default="true"),
     EnvField("ADMIN_EMAILS", "Comma-separated admin emails", required=True),
@@ -52,7 +52,7 @@ FIELDS: tuple[EnvField, ...] = (
     EnvField("CONTAINER_CPUS", "Container CPU count", default="16"),
     EnvField("CONTAINER_PIDS", "Container PID limit", default="4096"),
     EnvField("CONTAINER_SHM", "Container /dev/shm size", default="16g"),
-    EnvField("NGROK_AUTHTOKEN", "Remote SSH tunnel token", secret=True),
+    EnvField("NGROK_AUTHTOKEN", "Remote SSH tunnel token (NGROK_TOKEN is also accepted)", secret=True),
     EnvField("NGROK_TCP_ADDR", "Reserved ngrok TCP address"),
     EnvField("NGROK_DOMAIN", "Fixed ngrok HTTPS hostname for the web UI"),
 )
@@ -159,7 +159,10 @@ def prompt_env(
     getpass_fn=getpass.getpass,
 ) -> dict[str, str]:
     chosen: dict[str, str] = {}
+    smtp_followups = {"SMTP_PORT", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD"}
     for field in FIELDS:
+        if field.name in smtp_followups and not chosen.get("SMTP_HOST"):
+            continue
         current = existing.get(field.name, os.environ.get(field.name, ""))
         if values is not None:
             if field.name in values:

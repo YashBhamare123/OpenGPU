@@ -56,7 +56,7 @@ Run the tests described in [Testing](testing.md) before submitting a change. Add
 
 ## Debugging map
 
-- Login failure: inspect SMTP configuration and `auth_challenges`, without printing codes.
+- Login failure: inspect SMTP configuration and `auth_challenges`. Do not log codes. When SMTP is skipped, admin codes print only on the `opengpu serve` terminal.
 - Booking conflict: inspect active `reservations` and database constraint errors.
 - Provisioning failure: inspect `provisioning_jobs.last_error`, team state, scheduler heartbeat, and Docker labels.
 - Container did not start: compare the active reservation, `teams.container_name`, container status, and scheduler audit events.

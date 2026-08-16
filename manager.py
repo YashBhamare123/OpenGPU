@@ -10,7 +10,7 @@ from pathlib import Path
 import docker
 
 from config import settings
-from mailer import send_credentials
+from mailer import deliver_credentials as send_credentials
 
 APP_LABEL = "aiml-gpu-reservation"
 SEED_LABEL = "aiml-storage-seed"

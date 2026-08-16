@@ -6,9 +6,15 @@ from pathlib import Path
 
 from config import settings
 
+TOKEN_KEYS = ("NGROK_AUTHTOKEN", "NGROK_TOKEN")
+
 
 def ngrok_token() -> str:
-    return os.environ.get("NGROK_AUTHTOKEN", "").strip()
+    for name in TOKEN_KEYS:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return ""
 
 
 def parse_tcp_endpoint(chunk: str) -> tuple[str, int] | None:
@@ -31,6 +37,21 @@ def parse_tcp_endpoint(chunk: str) -> tuple[str, int] | None:
             host, port_text = hostport.rsplit(":", 1)
             return host, int(port_text)
     return None
+
+
+def last_ngrok_error(chunk: str) -> str:
+    last = ""
+    for line in chunk.splitlines():
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            if "ERR_NGROK" in line:
+                last = line.strip()
+            continue
+        err = str(payload.get("err") or "").strip()
+        if err and err not in {"<nil>", "None"}:
+            last = err.replace("\r", " ").strip()
+    return last[:400]
 
 
 def configure_agent(token: str) -> None:
@@ -70,7 +91,9 @@ def wait_for_endpoint(process: subprocess.Popen[str], timeout: float = 20) -> tu
     buffered = ""
     while time.monotonic() < deadline:
         if process.poll() is not None:
-            raise RuntimeError("remote access tunnel exited before it became ready")
+            rest = process.stdout.read() or ""
+            detail = last_ngrok_error(buffered + rest) or "remote access tunnel exited before it became ready"
+            raise RuntimeError(detail)
         ready = select_stdout(process, deadline - time.monotonic())
         if not ready:
             continue
@@ -81,7 +104,7 @@ def wait_for_endpoint(process: subprocess.Popen[str], timeout: float = 20) -> tu
         endpoint = parse_tcp_endpoint(buffered)
         if endpoint:
             return endpoint
-    raise RuntimeError("timed out waiting for the remote SSH endpoint")
+    raise RuntimeError(last_ngrok_error(buffered) or "timed out waiting for the remote SSH endpoint")
 
 
 def select_stdout(process: subprocess.Popen[str], timeout: float) -> bool:
@@ -97,8 +120,9 @@ def persist_token(env_file: Path, token: str) -> None:
     replaced = False
     updated = []
     for line in lines:
-        if line.startswith("NGROK_AUTHTOKEN="):
-            updated.append(f"NGROK_AUTHTOKEN={token}")
+        if any(line.startswith(f"{name}=") for name in TOKEN_KEYS):
+            key = line.split("=", 1)[0]
+            updated.append(f"{key}={token}")
             replaced = True
         else:
             updated.append(line)

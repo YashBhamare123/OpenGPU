@@ -1,6 +1,6 @@
 # Email
 
-OpenGPU uses SMTP with STARTTLS for three transactional messages: login OTPs, reservation SSH credentials, and cancellation confirmations.
+OpenGPU uses SMTP with STARTTLS for three transactional messages: login OTPs, reservation SSH credentials, and cancellation confirmations. Skip `SMTP_HOST` during setup to run without a relay: self-service booking is disabled, only administrators can request login codes (printed on the host terminal), and SSH passwords print there for sharing instead of being emailed.
 
 ## Login codes
 
@@ -33,6 +33,6 @@ Headers and templates cannot guarantee inbox placement. The domain in `SMTP_FROM
 
 ## Configuration and testing
 
-Required settings are `SMTP_HOST`, `SMTP_PORT`, and `SMTP_FROM`; authenticated relays also require `SMTP_USER` and `SMTP_PASSWORD`. Credentials belong only in the mode-600 environment file or service secret mechanism.
+Required settings for email are `SMTP_HOST`, `SMTP_PORT`, and `SMTP_FROM`; authenticated relays also require `SMTP_USER` and `SMTP_PASSWORD`. Leave `SMTP_HOST` empty to skip email. Credentials belong only in the mode-600 environment file or service secret mechanism. Do not log OTPs or plaintext passwords; the serve process stdout is the operator share channel when SMTP is off.
 
 Test mail changes against a dedicated recipient and relay. Verify both MIME alternatives, escaping of user-controlled values, copyability of SSH data, mobile rendering, and failure behavior. Never use a production user's reservation to test template changes.

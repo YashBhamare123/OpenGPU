@@ -45,6 +45,21 @@ def test_remote_access_warns_without_token(monkeypatch):
     assert check.fatal is False
 
 
+def test_remote_access_installs_token_from_env(monkeypatch):
+    called = {}
+    monkeypatch.setattr("tunnel.ngrok_token", lambda: "present")
+    monkeypatch.setattr("tunnel.configure_agent", lambda token: called.setdefault("ok", bool(token)))
+    monkeypatch.setattr(host.shutil, "which", lambda _name: "/usr/bin/ngrok")
+    monkeypatch.setattr(
+        host,
+        "_run",
+        lambda command, timeout=15: type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})(),
+    )
+    check = host.check_remote_access()
+    assert check.ok is True
+    assert called["ok"] is True
+
+
 def test_setup_writes_env_from_values(tmp_path, monkeypatch):
     env_file = tmp_path / ".env"
     monkeypatch.setattr("tunnel.configure_agent", lambda _token: None)

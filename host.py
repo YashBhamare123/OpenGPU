@@ -14,9 +14,6 @@ REQUIRED_ENV = (
     "DATABASE_URL",
     "SERVER_IP",
     "DOCKER_BIND_IP",
-    "SMTP_HOST",
-    "SMTP_PORT",
-    "SMTP_FROM",
     "ALLOWED_ORIGINS",
     "COOKIE_SECURE",
 )
@@ -99,7 +96,12 @@ def check_nvidia() -> Check:
 
 def check_smtp() -> Check:
     if not settings.smtp_host or not settings.smtp_from:
-        return Check("smtp", False, "SMTP_HOST and SMTP_FROM must be set")
+        return Check(
+            "smtp",
+            False,
+            "email disabled; only administrators can book, and SSH passwords print on this terminal",
+            fatal=False,
+        )
     try:
         with socket.create_connection((settings.smtp_host, settings.smtp_port), timeout=3):
             pass
@@ -227,21 +229,25 @@ def check_image() -> Check:
 
 
 def check_remote_access() -> Check:
-    from tunnel import ngrok_token
+    from tunnel import configure_agent, ngrok_token
 
     token = ngrok_token()
     if not token:
         return Check(
             "remote-access",
             False,
-            "no tunnel token; SSH stays on the local network. Run: opengpu setup --token <authtoken>",
+            "no tunnel token; SSH stays on the local network. Set NGROK_AUTHTOKEN or NGROK_TOKEN, or run: opengpu setup --token <authtoken>",
             fatal=False,
         )
     if shutil.which("ngrok") is None:
         return Check("remote-access", False, "tunnel token is set but ngrok is not on PATH")
+    try:
+        configure_agent(token)
+    except Exception as exc:  # noqa: BLE001
+        return Check("remote-access", False, str(exc)[:200])
     result = _run(["ngrok", "config", "check"])
     if result.returncode != 0:
-        return Check("remote-access", False, "ngrok is not configured; rerun opengpu setup --token")
+        return Check("remote-access", False, "ngrok is not configured; set NGROK_AUTHTOKEN or NGROK_TOKEN")
     return Check("remote-access", True, f"tunnel ready on localhost:{settings.ssh_public_port}")
 
 
@@ -255,6 +261,7 @@ def collect_checks() -> list[Check]:
         check_database(),
         check_storage_helper(),
         check_workspace(),
+        check_remote_access(),
     ]
 
 
@@ -327,13 +334,13 @@ def setup(
             except Exception as exc:  # noqa: BLE001
                 print(f"Could not write environment file: {exc}", file=sys.stderr)
                 return 1
-            hidden = {"SMTP_PASSWORD", "NGROK_AUTHTOKEN", "DATABASE_URL"}
+            hidden = {"SMTP_PASSWORD", "NGROK_AUTHTOKEN", "NGROK_TOKEN", "DATABASE_URL"}
             print(f"Wrote {path} (mode 600)")
             for key in chosen:
                 if key not in hidden:
                     print(f"  {key} set")
             print("  DATABASE_URL set")
-            token = token or chosen.get("NGROK_AUTHTOKEN") or None
+            token = token or chosen.get("NGROK_AUTHTOKEN") or chosen.get("NGROK_TOKEN") or None
     if not skip_helper:
         status = init_host()
         if status != 0:
@@ -385,11 +392,13 @@ def serve(*, host: str, port: int, tunnel: bool = False) -> None:
         worker.start()
 
     if tunnel:
-        from tunnel import ngrok_token, start_tunnel, wait_for_endpoint
+        from tunnel import configure_agent, ngrok_token, start_tunnel, wait_for_endpoint
 
-        if not ngrok_token():
-            print("No NGROK_AUTHTOKEN; serving locally.", file=sys.stderr, flush=True)
+        token = ngrok_token()
+        if not token:
+            print("No NGROK_AUTHTOKEN or NGROK_TOKEN; serving locally.", file=sys.stderr, flush=True)
         else:
+            configure_agent(token)
             ngrok = start_tunnel(settings.ssh_public_port)
             ssh_host, ssh_port = wait_for_endpoint(ngrok)
             os.environ["OPENGPU_SSH_HOST"] = ssh_host

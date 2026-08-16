@@ -7,7 +7,7 @@ This is a minimal deployment reference for contributors and small internal insta
 - Linux host with NVIDIA driver, Docker Engine, and NVIDIA Container Toolkit
 - PostgreSQL 15 or newer with permission to create `btree_gist` and `citext`
 - Python 3.10 or newer
-- SMTP relay with STARTTLS
+- SMTP relay with STARTTLS, or skip SMTP during setup to print login codes and SSH passwords on the host
 - Private network address for published SSH ports
 - HTTPS reverse proxy, or configured ngrok tunnel for development
 - Absolute `WORKSPACE_ROOT` with enough free space for sparse workspace and scratch images (loop mounts; XFS project quotas are not required)
@@ -24,7 +24,7 @@ opengpu doctor
 opengpu serve
 ```
 
-`opengpu setup` prompts for required settings and writes a mode-600 `.env` (or `~/.config/opengpu/env` after `pip install`). Leave `DATABASE_URL` out of setup prompts: Compose starts Postgres and the URL is written to `.env` without printing the password. Use `--skip-postgres` only when you already have a database URL in the environment file. Use `--skip-env` if the file already exists. It then installs the storage helper and pulls `DOCKER_IMAGE` unless skipped. `migrate` applies `postgres/init.sql` to an empty database. `doctor` checks NVIDIA, SMTP, PostgreSQL, the helper, and workspace space. `serve` starts the API, scheduler, and local SSH gateway.
+`opengpu setup` prompts for required settings and writes a mode-600 `.env`. Skip SMTP to run without email: only administrators can book, login codes for admins print on the host terminal, and SSH passwords print there for sharing. Compose starts Postgres and writes `DATABASE_URL` without printing the password.
 
 `scripts/configure-docker-storage-backend` is not required for these virtual-disk caps; it only forces Docker onto overlay2 and is optional. Reservations default to a 2 GB persistent workspace and 100 GB scratch disk for `/home`, `/tmp`, and a writable `/etc` copy; administrators can adjust both up to a combined 200 GB. The container root filesystem is read-only so users cannot fill the Docker overlay. The helper owns image creation and loop mounts; the scheduler account does not need general write access to `WORKSPACE_ROOT`.
 
@@ -69,7 +69,7 @@ For the configured development tunnel:
 ./start.sh --tunnel
 ```
 
-The supervisor runs the API and scheduler together and stops all children if one exits. Production deployments may install the separate units in `deploy/`; the API service account should not belong to the Docker group, while the scheduler account requires Docker access and passwordless access only to the installed storage helper.
+For remote SSH, set `NGROK_AUTHTOKEN` or `NGROK_TOKEN` and run `opengpu serve --tunnel`. `./start.sh --tunnel` still only publishes the web UI on `NGROK_DOMAIN`; include that hostname in `ALLOWED_ORIGINS`.
 
 Verify:
 

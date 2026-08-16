@@ -13,6 +13,14 @@ def test_configuration_reports_missing_env(monkeypatch):
     assert "DATABASE_URL" in check.detail
 
 
+def test_smtp_skipped_is_a_warning(monkeypatch):
+    monkeypatch.setattr(host, "settings", replace(host.settings, smtp_host="", smtp_from=""))
+    check = host.check_smtp()
+    assert check.ok is False
+    assert check.fatal is False
+    assert "administrators" in check.detail
+
+
 def test_docker_missing_from_path(monkeypatch):
     monkeypatch.setattr(host.shutil, "which", lambda _name: None)
     check = host.check_docker()

@@ -9,7 +9,17 @@ import api
 from api import current_user, enforce_origin, require_admin, settings
 
 
+def test_self_booking_is_blocked_without_smtp(monkeypatch):
+    monkeypatch.setattr(api, "smtp_enabled", lambda: False)
+    start = datetime.now(timezone.utc) + timedelta(hours=1)
+    request = api.ReservationRequest(start_time=start, end_time=start + timedelta(minutes=30))
+    with pytest.raises(HTTPException) as error:
+        api.create_reservation(request, user={"id": 1, "is_admin": False}, idempotency_key="test-smtp-off")
+    assert error.value.status_code == 403
+
+
 def test_standard_reservation_limit_is_enforced_before_database_access(monkeypatch):
+    monkeypatch.setattr(api, "smtp_enabled", lambda: True)
     monkeypatch.setattr(api, "settings", replace(api.settings, reservation_limit_minutes=120))
     start = datetime.now(timezone.utc) + timedelta(hours=1)
     request = api.ReservationRequest(start_time=start, end_time=start + timedelta(minutes=135))

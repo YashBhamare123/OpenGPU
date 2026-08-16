@@ -4,6 +4,26 @@ from datetime import datetime, timedelta, timezone
 import mailer
 
 
+def test_credentials_print_when_smtp_is_disabled(monkeypatch, capsys):
+    monkeypatch.setattr(mailer, "settings", replace(mailer.settings, smtp_host="", smtp_from="", server_ip="10.0.0.10"))
+    mailer.deliver_credentials("person@example.edu", "gpu1", "once-secret", 22001)
+    out = capsys.readouterr().out
+    assert "ssh gpu1@10.0.0.10 -p 22001" in out
+    assert "once-secret" in out
+
+
+def test_admin_otp_prints_when_smtp_is_disabled(monkeypatch, capsys):
+    monkeypatch.setattr(
+        mailer,
+        "settings",
+        replace(mailer.settings, smtp_host="", smtp_from="", admin_emails=("admin@example.edu",)),
+    )
+    mailer.deliver_otp("admin@example.edu", "654321")
+    assert "654321" in capsys.readouterr().out
+    mailer.deliver_otp("person@example.edu", "111111")
+    assert "111111" not in capsys.readouterr().out
+
+
 def test_otp_email_has_plain_and_professional_html_alternatives(monkeypatch):
     captured = []
     monkeypatch.setattr(mailer, "settings", replace(mailer.settings, otp_minutes=10,
