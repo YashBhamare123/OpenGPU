@@ -21,6 +21,8 @@ def _preserve_env(monkeypatch):
             monkeypatch.setenv(field.name, os.environ[field.name])
         else:
             monkeypatch.delenv(field.name, raising=False)
+    monkeypatch.setenv("DOCKER_IMAGE", "yashbhamare123/opengpu:ml")
+    monkeypatch.setenv("CPU_ONLY", "false")
 
 
 def _answer(prompt: str, *, empty_first: dict[str, int] | None = None) -> str:

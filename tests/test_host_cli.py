@@ -1,5 +1,4 @@
 import os
-from dataclasses import replace
 
 import envfile
 import gateway
@@ -8,7 +7,8 @@ import host
 
 def test_image_missing(monkeypatch):
     monkeypatch.setattr(host.shutil, "which", lambda _name: "/usr/bin/docker")
-    monkeypatch.setattr(host, "settings", replace(host.settings, docker_image="yashbhamare123/opengpu:ml"))
+    monkeypatch.setenv("DOCKER_IMAGE", "yashbhamare123/opengpu:ml")
+    monkeypatch.delenv("CPU_ONLY", raising=False)
 
     def fake_run(command, timeout=15):
         return type("R", (), {"returncode": 1, "stdout": "", "stderr": "denied"})()
@@ -21,7 +21,8 @@ def test_image_missing(monkeypatch):
 
 def test_image_pulls_when_missing(monkeypatch):
     monkeypatch.setattr(host.shutil, "which", lambda _name: "/usr/bin/docker")
-    monkeypatch.setattr(host, "settings", replace(host.settings, docker_image="yashbhamare123/opengpu:ml"))
+    monkeypatch.setenv("DOCKER_IMAGE", "yashbhamare123/opengpu:ml")
+    monkeypatch.delenv("CPU_ONLY", raising=False)
     commands = []
 
     def fake_run(command, timeout=15):

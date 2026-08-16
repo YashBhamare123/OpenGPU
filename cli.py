@@ -15,10 +15,10 @@ def _scheduler(_args: argparse.Namespace) -> None:
     run()
 
 
-def _doctor(_args: argparse.Namespace) -> None:
+def _doctor(args: argparse.Namespace) -> None:
     from host import doctor
 
-    raise SystemExit(doctor())
+    raise SystemExit(doctor(cpu=args.cpu))
 
 
 def _setup(args: argparse.Namespace) -> None:
@@ -31,6 +31,7 @@ def _setup(args: argparse.Namespace) -> None:
             skip_image=args.skip_image,
             skip_env=args.skip_env,
             skip_postgres=args.skip_postgres,
+            cpu=args.cpu,
             env_file=args.env_file,
         )
     )
@@ -73,16 +74,18 @@ def main(argv: list[str] | None = None) -> None:
     serve.add_argument("--no-tunnel", action="store_true", help=argparse.SUPPRESS)
     serve.set_defaults(func=_serve)
 
-    setup = commands.add_parser("setup", help="Write .env, install the storage helper, and pull the GPU image")
+    setup = commands.add_parser("setup", help="Write .env, install the storage helper, and pull the user image")
     setup.add_argument("--token", help="Remote SSH tunnel authtoken (stored in .env, not printed)")
     setup.add_argument("--skip-helper", action="store_true", help="Do not install the storage helper")
     setup.add_argument("--skip-image", action="store_true", help="Do not pull DOCKER_IMAGE")
     setup.add_argument("--skip-env", action="store_true", help="Do not prompt for or rewrite the environment file")
     setup.add_argument("--skip-postgres", action="store_true", help="Do not start PostgreSQL with Docker Compose")
+    setup.add_argument("--cpu", action="store_true", help="Use the opengpu:cpu image and skip NVIDIA checks")
     setup.add_argument("--env-file", help="Path to write (default: .env, or ~/.config/opengpu/env when installed)")
     setup.set_defaults(func=_setup)
 
     doctor = commands.add_parser("doctor", help="Check that this host can run OpenGPU")
+    doctor.add_argument("--cpu", action="store_true", help="Use the opengpu:cpu image and skip NVIDIA checks")
     doctor.set_defaults(func=_doctor)
 
     migrate_cmd = commands.add_parser("migrate", help="Apply the PostgreSQL schema or pending migrations")

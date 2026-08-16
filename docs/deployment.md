@@ -4,7 +4,7 @@ This is a minimal deployment reference for contributors and small internal insta
 
 ## Prerequisites
 
-- Linux host with NVIDIA driver, Docker Engine, and NVIDIA Container Toolkit
+- Linux host with Docker Engine. NVIDIA driver and NVIDIA Container Toolkit are required for GPU reservations; `opengpu doctor` can switch the host to CPU-only mode instead.
 - PostgreSQL 15 or newer with permission to create `btree_gist` and `citext`
 - Python 3.10 or newer
 - SMTP relay with STARTTLS, or skip SMTP during setup to print login codes and SSH passwords on the host
@@ -44,7 +44,7 @@ Hosts pull the published user image; they do not build it during setup:
 docker pull yashbhamare123/opengpu:ml
 ```
 
-`opengpu setup` and `opengpu doctor` do this using `DOCKER_IMAGE` (default `yashbhamare123/opengpu:ml`). Set that variable if you use another tag.
+`opengpu setup` and `opengpu doctor` do this using `DOCKER_IMAGE` (default `yashbhamare123/opengpu:ml`). Set `CPU_ONLY=true` or pass `--cpu` to pull `yashbhamare123/opengpu:cpu` instead. Set `DOCKER_IMAGE` if you use another tag.
 
 ## Build and validate
 

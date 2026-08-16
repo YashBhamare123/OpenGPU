@@ -6,7 +6,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from config import settings
+from config import CPU_IMAGE, LOCAL_CPU_IMAGE, cpu_only, docker_image, settings
 from database import get_connection
 from paths import script_path
 
@@ -78,6 +78,8 @@ def check_docker() -> Check:
 
 
 def check_nvidia() -> Check:
+    if cpu_only():
+        return Check("nvidia", True, "CPU-only mode; user containers will not request a GPU")
     if shutil.which("nvidia-smi") is None:
         return Check("nvidia", False, "nvidia-smi is not on PATH; install the NVIDIA driver first")
     result = _run(["nvidia-smi", "-L"])
@@ -209,19 +211,62 @@ def check_workspace() -> Check:
     return Check("workspace", True, f"{root} has {free_gb} GB free on {probe}")
 
 
+def _persist_env_updates(updates: dict[str, str]) -> None:
+    from envfile import apply_env, default_env_path, parse_env, write_env
+
+    apply_env(updates)
+    path = default_env_path()
+    existing = parse_env(path)
+    existing.update(updates)
+    if path.is_file() or existing:
+        write_env(path, existing)
+
+
+def enable_cpu_only() -> None:
+    os.environ["CPU_ONLY"] = "true"
+    image = os.environ.get("DOCKER_IMAGE", "").strip()
+    if not image or image == settings.docker_image or image.endswith(":ml"):
+        image = CPU_IMAGE
+        os.environ["DOCKER_IMAGE"] = image
+    _persist_env_updates({"CPU_ONLY": "true", "DOCKER_IMAGE": image})
+
+
+def prompt_cpu_only(*, input_fn=input) -> bool:
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False
+    answer = input_fn("NVIDIA was not detected. Run CPU-only with the opengpu:cpu image? [y/N] ")
+    return str(answer or "").strip().lower() in {"y", "yes"}
+
+
 def ensure_image() -> Check:
-    image = os.environ.get("DOCKER_IMAGE", "").strip() or settings.docker_image
     if shutil.which("docker") is None:
         return Check("image", False, "docker is not on PATH")
-    inspect = _run(["docker", "image", "inspect", image])
-    if inspect.returncode == 0:
-        return Check("image", True, image)
-    print(f"Pulling {image}...", flush=True)
-    pull = _run(["docker", "pull", image], timeout=3600)
+    image = docker_image()
+    candidates = [image]
+    if cpu_only():
+        for name in (LOCAL_CPU_IMAGE, CPU_IMAGE):
+            if name not in candidates:
+                candidates.append(name)
+    for name in candidates:
+        inspect = _run(["docker", "image", "inspect", name])
+        if inspect.returncode == 0:
+            if name != image:
+                os.environ["DOCKER_IMAGE"] = name
+                _persist_env_updates({"DOCKER_IMAGE": name})
+            return Check("image", True, name)
+    pull_target = CPU_IMAGE if cpu_only() else image
+    print(f"Pulling {pull_target}...", flush=True)
+    pull = _run(["docker", "pull", pull_target], timeout=3600)
     if pull.returncode != 0:
         detail = (pull.stderr or pull.stdout).strip()[:300] or "docker pull failed"
-        return Check("image", False, f"could not pull {image}: {detail}")
-    return Check("image", True, f"pulled {image}")
+        hint = ""
+        if cpu_only():
+            hint = "; or build locally with: docker build -f Dockerfile.cpu -t opengpu:cpu ."
+        return Check("image", False, f"could not pull {pull_target}: {detail}{hint}")
+    os.environ["DOCKER_IMAGE"] = pull_target
+    if cpu_only():
+        _persist_env_updates({"DOCKER_IMAGE": pull_target})
+    return Check("image", True, f"pulled {pull_target}")
 
 
 def check_image() -> Check:
@@ -278,7 +323,21 @@ def format_report(checks: list[Check]) -> str:
     return "\n".join(lines)
 
 
-def doctor() -> int:
+def doctor(*, cpu: bool = False, input_fn=input) -> int:
+    if cpu and not cpu_only():
+        enable_cpu_only()
+        print("CPU-only mode enabled. User containers will not request a GPU.", flush=True)
+    elif not cpu_only():
+        nvidia = check_nvidia()
+        if not nvidia.ok:
+            if prompt_cpu_only(input_fn=input_fn):
+                enable_cpu_only()
+                print("CPU-only mode enabled. User containers will not request a GPU.", flush=True)
+            else:
+                print(format_report([nvidia]))
+                print("Host is not ready. Fix the failing checks, then rerun: opengpu doctor", file=sys.stderr)
+                print("To continue without a GPU: opengpu doctor --cpu", file=sys.stderr)
+                return 1
     checks = collect_checks()
     print(format_report(checks))
     if any(not check.ok and check.fatal for check in checks):
@@ -295,6 +354,7 @@ def setup(
     skip_image: bool = False,
     skip_env: bool = False,
     skip_postgres: bool = False,
+    cpu: bool = False,
     env_file: str | None = None,
     env_values: dict[str, str] | None = None,
 ) -> int:
@@ -345,6 +405,13 @@ def setup(
         status = init_host()
         if status != 0:
             return status
+    if cpu and not cpu_only():
+        enable_cpu_only()
+        print("CPU-only mode enabled. User containers will not request a GPU.", flush=True)
+    elif not skip_image and not cpu_only() and not check_nvidia().ok:
+        if prompt_cpu_only():
+            enable_cpu_only()
+            print("CPU-only mode enabled. User containers will not request a GPU.", flush=True)
     if not skip_image:
         image = ensure_image()
         print(f"{'ok' if image.ok else 'fail'}  {image.name}: {image.detail}")

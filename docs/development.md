@@ -22,7 +22,7 @@ opengpu setup --skip-helper --skip-image
 | Database connection and schema | `database.py`, `postgres/` |
 | Scheduler and desired state | `scheduler.py` |
 | Docker provisioning | `manager.py`, `entrypoint.sh` |
-| User image | `Dockerfile`, `requirements-ml.txt` |
+| User image | `Dockerfile`, `Dockerfile.cpu`, `requirements-ml.txt` |
 | Email | `mailer.py` |
 | Administration | `admin.py`, `python -m cli admin` |
 | Local CLI | `opengpu setup`, `opengpu migrate`, `opengpu doctor`, `opengpu serve` |

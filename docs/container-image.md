@@ -34,6 +34,17 @@ docker push yashbhamare123/opengpu:ml
 docker run --rm --entrypoint bash opengpu:ml -lc 'python --version && nvim --version | head -1 && tmux -V'
 ```
 
+## CPU image
+
+`Dockerfile.cpu` is a small Ubuntu 22.04 image with Python, OpenSSH, sudo, git, curl, and vim. It uses the same entrypoint as the GPU image so reservations still work over SSH. It does not include CUDA or PyTorch.
+
+```bash
+docker build -f Dockerfile.cpu -t opengpu:cpu -t yashbhamare123/opengpu:cpu .
+docker push yashbhamare123/opengpu:cpu
+```
+
+On a host without NVIDIA hardware, `opengpu doctor` prompts to enable CPU-only mode. That sets `CPU_ONLY=true`, switches `DOCKER_IMAGE` to `yashbhamare123/opengpu:cpu` (or a local `opengpu:cpu` tag), and omits GPU device requests. Non-interactive installs can pass `opengpu setup --cpu` or `opengpu doctor --cpu`.
+
 GPU validation requires a free compatible device:
 
 ```bash

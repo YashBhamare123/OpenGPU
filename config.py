@@ -34,6 +34,21 @@ def _load_env() -> None:
 
 _load_env()
 
+GPU_IMAGE = "yashbhamare123/opengpu:ml"
+CPU_IMAGE = "yashbhamare123/opengpu:cpu"
+LOCAL_CPU_IMAGE = "opengpu:cpu"
+
+
+def cpu_only() -> bool:
+    return os.environ.get("CPU_ONLY", "").strip().lower() in {"1", "true", "yes"}
+
+
+def docker_image() -> str:
+    explicit = os.environ.get("DOCKER_IMAGE", "").strip()
+    if explicit:
+        return explicit
+    return CPU_IMAGE if cpu_only() else GPU_IMAGE
+
 
 def _int(name: str, default: int) -> int:
     return int(os.environ.get(name, str(default)))
@@ -44,7 +59,7 @@ class Settings:
     database_url: str = os.environ.get("DATABASE_URL", "")
     server_ip: str = os.environ.get("SERVER_IP", "127.0.0.1")
     docker_bind_ip: str = os.environ.get("DOCKER_BIND_IP", "127.0.0.1")
-    docker_image: str = os.environ.get("DOCKER_IMAGE", "yashbhamare123/opengpu:ml")
+    docker_image: str = docker_image()
     workspace_root: str = os.environ.get("WORKSPACE_ROOT", "/var/lib/docker/opengpu-workspaces")
     storage_helper: str = os.environ.get("STORAGE_HELPER", "/usr/local/sbin/opengpu-storage-init")
     ssh_port_start: int = _int("SSH_PORT_START", 22001)

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import docker
 
-from config import settings
+from config import cpu_only, docker_image, settings
 from mailer import deliver_credentials as send_credentials
 
 APP_LABEL = "aiml-gpu-reservation"
@@ -113,7 +113,7 @@ def storage_destination_has_user_files(destination: Path) -> bool:
 
 def seed_scratch_etc(scratch_etc: Path) -> None:
     container = get_client().containers.create(
-        image=settings.docker_image,
+        image=docker_image(),
         entrypoint="/bin/bash",
         command=[
             "-c",
@@ -183,7 +183,7 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind((settings.docker_bind_ip, ssh_port))
     container = get_client().containers.create(
-        image=settings.docker_image,
+        image=docker_image(),
         name=container_name,
         hostname=container_name,
         labels=labels(user_id),
@@ -197,7 +197,7 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
         },
         environment={"TEAM_NAME": username, "TEAM_PASSWORD_HASH": password_hash,
                      "WORKSPACE_GB": str(workspace_gb), "TEMP_STORAGE_GB": str(temp_storage_gb)},
-        device_requests=[docker.types.DeviceRequest(count=1, capabilities=[["gpu"]])],
+        device_requests=[] if cpu_only() else [docker.types.DeviceRequest(count=1, capabilities=[["gpu"]])],
         mem_limit=settings.memory_limit,
         nano_cpus=settings.cpu_limit * 1_000_000_000,
         pids_limit=settings.pids_limit,

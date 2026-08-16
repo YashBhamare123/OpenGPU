@@ -15,7 +15,7 @@ usage() {
 Usage: ./start.sh [--check] [--build] [--tunnel]
 
   --check  Validate configuration and dependencies without starting services.
-  --build  Rebuild the configured Docker image before starting.
+  --build  Rebuild the configured Docker image before starting (Dockerfile.cpu when CPU_ONLY=true).
   --tunnel Start the configured permanent ngrok HTTPS endpoint as well.
   --help   Show this help.
 
@@ -102,15 +102,24 @@ fi
 echo "Checking host..."
 python3 -m cli doctor
 
-docker_image="$(python3 - <<'PY'
-from config import settings
-print(settings.docker_image)
+docker_image="$(OPENGPU_ENV_FILE="$ENV_FILE" python3 - <<'PY'
+from config import docker_image
+print(docker_image())
+PY
+)"
+cpu_only="$(OPENGPU_ENV_FILE="$ENV_FILE" python3 - <<'PY'
+from config import cpu_only
+print("true" if cpu_only() else "false")
 PY
 )"
 
 if [[ "$BUILD_IMAGE" == true ]]; then
   echo "Building $docker_image..."
-  docker build -t "$docker_image" .
+  if [[ "$cpu_only" == true || "$docker_image" == *:cpu ]]; then
+    docker build -f Dockerfile.cpu -t opengpu:cpu -t yashbhamare123/opengpu:cpu -t "$docker_image" .
+  else
+    docker build -t "$docker_image" .
+  fi
 fi
 
 if ! docker image inspect "$docker_image" >/dev/null 2>&1; then
