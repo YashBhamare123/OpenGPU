@@ -21,6 +21,8 @@ echo "$TEAM_NAME:$TEAM_PASSWORD_HASH" | chpasswd -e
 
 echo "$TEAM_NAME ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$TEAM_NAME"
 chmod 440 "/etc/sudoers.d/$TEAM_NAME"
+# scratch /etc is bind-mounted; login shells need to read /etc/profile.
+chmod 0755 /etc
 
 chown "$TEAM_NAME:$TEAM_NAME" /workspace
 if [[ "$(stat -c '%a' /tmp 2>/dev/null || true)" != "1777" ]]; then

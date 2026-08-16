@@ -158,7 +158,7 @@ ensure_scratch_layout() {
   local scratch=$1
   install_dir 0755 "$scratch/home"
   install_dir 1777 "$scratch/tmp"
-  install_dir 0750 "$scratch/etc"
+  install_dir 0755 "$scratch/etc"
   chmod 1777 -- "$scratch/tmp"
 }
 
