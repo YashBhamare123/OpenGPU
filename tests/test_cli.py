@@ -9,10 +9,14 @@ def test_serve_help_exits_zero():
     assert exc.value.code == 0
 
 
-def test_setup_help_exits_zero():
+def test_setup_help_mentions_skip_env(capsys):
     with pytest.raises(SystemExit) as exc:
         cli.main(["setup", "--help"])
     assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "--skip-env" in out
+    assert "--skip-postgres" in out
+    assert "--env-file" in out
 
 
 def test_init_host_help_exits_zero():

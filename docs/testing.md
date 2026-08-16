@@ -35,8 +35,8 @@ The safety checks reject a URL whose database name does not end in `_test`. Test
 
 ```bash
 bash -n start.sh entrypoint.sh scripts/run-tests.sh
-python -m py_compile api.py admin.py cli.py config.py database.py gateway.py host.py mailer.py manager.py migrate.py paths.py scheduler.py security.py tunnel.py
-python -m ruff check api.py admin.py cli.py config.py database.py gateway.py host.py mailer.py manager.py migrate.py paths.py scheduler.py security.py tunnel.py tests
+python -m py_compile api.py admin.py cli.py config.py database.py envfile.py gateway.py host.py localdb.py mailer.py manager.py migrate.py paths.py scheduler.py security.py tunnel.py
+python -m ruff check api.py admin.py cli.py config.py database.py envfile.py gateway.py host.py localdb.py mailer.py manager.py migrate.py paths.py scheduler.py security.py tunnel.py tests
 docker build --check .
 ```
 

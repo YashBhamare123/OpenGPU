@@ -8,11 +8,10 @@ Create a virtual environment and install the control-plane dependencies:
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-cp .env.example .env
-chmod 600 .env
+opengpu setup --skip-helper --skip-image
 ```
 
-`requirements-ml.txt` belongs to the GPU image and is not required for routine API or scheduler tests.
+`opengpu setup` writes `.env`. Optional variables accept `skip`. Use `--skip-env` to keep an existing file. `requirements-ml.txt` belongs to the GPU image and is not required for routine API or scheduler tests.
 
 ## Source map
 

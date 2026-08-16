@@ -89,7 +89,7 @@ For relevant static checks:
 
 ```bash
 bash -n start.sh entrypoint.sh scripts/run-tests.sh
-python -m py_compile api.py admin.py cli.py config.py database.py gateway.py host.py mailer.py manager.py migrate.py paths.py scheduler.py security.py tunnel.py
+python -m py_compile api.py admin.py cli.py config.py database.py envfile.py gateway.py host.py localdb.py mailer.py manager.py migrate.py paths.py scheduler.py security.py tunnel.py
 docker build --check .
 ```
 

@@ -99,7 +99,7 @@ fi
 echo "Docker image: ok ($docker_image)"
 
 python3 -m py_compile \
-  api.py admin.py cli.py config.py database.py gateway.py host.py mailer.py manager.py migrate.py paths.py scheduler.py security.py tunnel.py
+  api.py admin.py cli.py config.py database.py envfile.py gateway.py host.py localdb.py mailer.py manager.py migrate.py paths.py scheduler.py security.py tunnel.py
 
 if [[ "$CHECK_ONLY" == true ]]; then
   echo "All checks passed."

@@ -208,17 +208,18 @@ def check_workspace() -> Check:
 
 
 def ensure_image() -> Check:
+    image = os.environ.get("DOCKER_IMAGE", "").strip() or settings.docker_image
     if shutil.which("docker") is None:
         return Check("image", False, "docker is not on PATH")
-    inspect = _run(["docker", "image", "inspect", settings.docker_image])
+    inspect = _run(["docker", "image", "inspect", image])
     if inspect.returncode == 0:
-        return Check("image", True, settings.docker_image)
-    print(f"Pulling {settings.docker_image}...", flush=True)
-    pull = _run(["docker", "pull", settings.docker_image], timeout=3600)
+        return Check("image", True, image)
+    print(f"Pulling {image}...", flush=True)
+    pull = _run(["docker", "pull", image], timeout=3600)
     if pull.returncode != 0:
         detail = (pull.stderr or pull.stdout).strip()[:300] or "docker pull failed"
-        return Check("image", False, f"could not pull {settings.docker_image}: {detail}")
-    return Check("image", True, f"pulled {settings.docker_image}")
+        return Check("image", False, f"could not pull {image}: {detail}")
+    return Check("image", True, f"pulled {image}")
 
 
 def check_image() -> Check:
@@ -280,10 +281,59 @@ def doctor() -> int:
     return 0
 
 
-def setup(*, token: str | None = None, skip_helper: bool = False, skip_image: bool = False) -> int:
-    from paths import ROOT
+def setup(
+    *,
+    token: str | None = None,
+    skip_helper: bool = False,
+    skip_image: bool = False,
+    skip_env: bool = False,
+    skip_postgres: bool = False,
+    env_file: str | None = None,
+    env_values: dict[str, str] | None = None,
+) -> int:
+    from envfile import apply_env, configure_env, default_env_path, parse_env, write_env
+    from localdb import ensure_local_postgres
     from tunnel import configure_agent, persist_token
 
+    path = Path(env_file).expanduser() if env_file else default_env_path()
+    chosen: dict[str, str] = {}
+    if not skip_env:
+        interactive = env_values is not None or (sys.stdin.isatty() and sys.stdout.isatty())
+        if not interactive:
+            print("Not a terminal; leaving environment file unchanged. Rerun `opengpu setup` to be prompted.", file=sys.stderr)
+        else:
+            try:
+                chosen = configure_env(path, values=env_values, write=False)
+            except (EOFError, ValueError) as exc:
+                print(f"Could not collect environment settings: {exc}", file=sys.stderr)
+                return 1
+            if not skip_postgres:
+                try:
+                    print("Starting PostgreSQL with Docker Compose...")
+                    chosen["DATABASE_URL"] = ensure_local_postgres()
+                except Exception as exc:  # noqa: BLE001
+                    print(f"Could not start PostgreSQL: {exc}", file=sys.stderr)
+                    return 1
+                print("PostgreSQL is listening on 127.0.0.1 (password stored in .env, not printed).")
+            elif not chosen.get("DATABASE_URL"):
+                print("PostgreSQL was skipped and DATABASE_URL is not set.", file=sys.stderr)
+                return 1
+            try:
+                existing = parse_env(path)
+                extras = {key: value for key, value in existing.items() if key not in chosen}
+                write_env(path, chosen, extras)
+                apply_env(chosen)
+                os.environ["OPENGPU_ENV_FILE"] = str(path)
+            except Exception as exc:  # noqa: BLE001
+                print(f"Could not write environment file: {exc}", file=sys.stderr)
+                return 1
+            hidden = {"SMTP_PASSWORD", "NGROK_AUTHTOKEN", "DATABASE_URL"}
+            print(f"Wrote {path} (mode 600)")
+            for key in chosen:
+                if key not in hidden:
+                    print(f"  {key} set")
+            print("  DATABASE_URL set")
+            token = token or chosen.get("NGROK_AUTHTOKEN") or None
     if not skip_helper:
         status = init_host()
         if status != 0:
@@ -300,7 +350,7 @@ def setup(*, token: str | None = None, skip_helper: bool = False, skip_image: bo
         except Exception as exc:  # noqa: BLE001
             print(f"Could not store the remote-access token: {exc}", file=sys.stderr)
             return 1
-        persist_token(ROOT / ".env", token)
+        persist_token(path, token)
         print("Remote SSH tunnel token saved.")
     print("Setup complete. Next: opengpu migrate && opengpu doctor && opengpu serve")
     return 0
@@ -366,13 +416,13 @@ def init_host() -> int:
     if not installer.is_file():
         print(f"Missing storage helper installer: {installer}", file=sys.stderr)
         return 1
-    if not Path(settings.workspace_root).is_absolute():
+    if not Path(os.environ.get("WORKSPACE_ROOT", settings.workspace_root)).is_absolute():
         print("WORKSPACE_ROOT must be an absolute path.", file=sys.stderr)
         return 1
     env = os.environ.copy()
-    env["WORKSPACE_ROOT"] = settings.workspace_root
+    env["WORKSPACE_ROOT"] = os.environ.get("WORKSPACE_ROOT", settings.workspace_root)
     command = ["sudo", str(installer)]
-    print(f"Installing storage helper for {settings.workspace_root}...")
+    print(f"Installing storage helper for {env['WORKSPACE_ROOT']}...")
     result = subprocess.run(command, env=env, check=False)
     if result.returncode != 0:
         print("Storage helper install failed. Run the command from the scheduler account with sudo.", file=sys.stderr)

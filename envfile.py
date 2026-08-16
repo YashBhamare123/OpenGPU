@@ -1,0 +1,210 @@
+from __future__ import annotations
+
+import getpass
+import json
+import os
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+from paths import ROOT
+
+SKIP_ANSWERS = {"", "skip", "none", "-"}
+
+
+@dataclass(frozen=True)
+class EnvField:
+    name: str
+    help: str
+    required: bool = False
+    secret: bool = False
+    default: str = ""
+
+
+FIELDS: tuple[EnvField, ...] = (
+    EnvField("SERVER_IP", "Address advertised in SSH emails", required=True, default="127.0.0.1"),
+    EnvField("DOCKER_BIND_IP", "Host interface Docker publishes SSH on", required=True, default="127.0.0.1"),
+    EnvField("WORKSPACE_ROOT", "Directory for workspace and scratch images", required=True, default="/var/lib/docker/opengpu-workspaces"),
+    EnvField("SMTP_HOST", "SMTP relay hostname", required=True),
+    EnvField("SMTP_PORT", "SMTP port", required=True, default="587"),
+    EnvField("SMTP_FROM", "From address for login and SSH emails", required=True),
+    EnvField("ALLOWED_ORIGINS", "Comma-separated browser origins", required=True),
+    EnvField("COOKIE_SECURE", "true when serving over HTTPS", required=True, default="true"),
+    EnvField("ADMIN_EMAILS", "Comma-separated admin emails", required=True),
+    EnvField("SMTP_USER", "SMTP username"),
+    EnvField("SMTP_PASSWORD", "SMTP password", secret=True),
+    EnvField("PUBLIC_BASE_URL", "Public site URL"),
+    EnvField("ACCESS_CONTACT_EMAIL", "Contact shown when access is denied"),
+    EnvField("DOCKER_IMAGE", "GPU user image", default="yashbhamare123/opengpu:ml"),
+    EnvField("STORAGE_HELPER", "Installed storage helper path", default="/usr/local/sbin/opengpu-storage-init"),
+    EnvField("SSH_PUBLIC_PORT", "Local SSH gateway port", default="2222"),
+    EnvField("SSH_GATEWAY_BIND", "SSH gateway bind address", default="127.0.0.1"),
+    EnvField("SSH_PORT_START", "First published container SSH port", default="22001"),
+    EnvField("SSH_PORT_END", "Last published container SSH port", default="32000"),
+    EnvField("API_HOST", "API listen address", default="127.0.0.1"),
+    EnvField("API_PORT", "API listen port", default="8000"),
+    EnvField("SESSION_HOURS", "Browser session length", default="12"),
+    EnvField("OTP_MINUTES", "Login code lifetime", default="10"),
+    EnvField("OTP_MAX_ATTEMPTS", "Login code attempts", default="5"),
+    EnvField("RESERVATION_LIMIT_MINUTES", "Standard reservation length", default="120"),
+    EnvField("POLL_INTERVAL", "Scheduler poll seconds", default="5"),
+    EnvField("CONTAINER_MEMORY", "Container memory limit", default="32g"),
+    EnvField("CONTAINER_CPUS", "Container CPU count", default="16"),
+    EnvField("CONTAINER_PIDS", "Container PID limit", default="4096"),
+    EnvField("CONTAINER_SHM", "Container /dev/shm size", default="16g"),
+    EnvField("NGROK_AUTHTOKEN", "Remote SSH tunnel token", secret=True),
+    EnvField("NGROK_TCP_ADDR", "Reserved ngrok TCP address"),
+    EnvField("NGROK_DOMAIN", "Fixed ngrok HTTPS hostname for the web UI"),
+)
+
+
+def default_env_path() -> Path:
+    specified = os.environ.get("OPENGPU_ENV_FILE", "").strip()
+    if specified:
+        return Path(specified).expanduser()
+    candidates = (
+        Path.cwd() / ".env",
+        ROOT / ".env",
+        Path.home() / ".config/opengpu/env",
+    )
+    for path in candidates:
+        if path.is_file():
+            return path
+    if "site-packages" in Path(ROOT).parts:
+        return Path.home() / ".config/opengpu/env"
+    return Path.cwd() / ".env"
+
+
+def parse_env(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.is_file():
+        return values
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value
+    return values
+
+
+def _quote(value: str) -> str:
+    if value and not any(ch in value for ch in ' \t\n#"\''):
+        return value
+    return json.dumps(value)
+
+
+def write_env(path: Path, values: dict[str, str], extras: dict[str, str] | None = None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    written: set[str] = set()
+    for field in FIELDS:
+        if field.name not in values:
+            continue
+        lines.append(f"# {field.help}")
+        lines.append(f"{field.name}={_quote(values[field.name])}")
+        written.add(field.name)
+    for key, value in values.items():
+        if key in written:
+            continue
+        if key == "DATABASE_URL":
+            lines.append("# PostgreSQL URL from local Docker Compose")
+        lines.append(f"{key}={_quote(value)}")
+        written.add(key)
+    for key, value in (extras or {}).items():
+        if key in written:
+            continue
+        lines.append(f"{key}={_quote(value)}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    path.chmod(0o600)
+
+
+def apply_env(values: dict[str, str]) -> None:
+    for key, value in values.items():
+        os.environ[key] = value
+
+
+def _is_skip(answer: str) -> bool:
+    return answer.strip().lower() in SKIP_ANSWERS
+
+
+def _prompt_one(field: EnvField, current: str, *, input_fn, getpass_fn) -> str | None:
+    shown = current or field.default
+    if field.required:
+        hint = f" [{shown}]" if shown else " [required]"
+    else:
+        hint = f" [{shown}, skip to keep]" if shown else " [skip]"
+    prompt = f"{field.name} ({field.help}){hint}: "
+    if field.secret:
+        answer = getpass_fn(prompt)
+    else:
+        answer = input_fn(prompt)
+    answer = "" if answer is None else str(answer).strip()
+    if field.required:
+        if answer:
+            return answer
+        if shown:
+            return shown
+        return None
+    if _is_skip(answer):
+        return shown or None
+    return answer
+
+
+def prompt_env(
+    existing: dict[str, str],
+    *,
+    values: dict[str, str] | None = None,
+    input_fn=input,
+    getpass_fn=getpass.getpass,
+) -> dict[str, str]:
+    chosen: dict[str, str] = {}
+    for field in FIELDS:
+        current = existing.get(field.name, os.environ.get(field.name, ""))
+        if values is not None:
+            if field.name in values:
+                raw = values[field.name]
+                if field.required:
+                    chosen[field.name] = raw or field.default
+                elif not _is_skip(raw):
+                    chosen[field.name] = raw
+                elif field.default:
+                    chosen[field.name] = field.default
+                continue
+            if field.required:
+                chosen[field.name] = current or field.default
+            elif current:
+                chosen[field.name] = current
+            elif field.default:
+                chosen[field.name] = field.default
+            continue
+        while True:
+            picked = _prompt_one(field, current, input_fn=input_fn, getpass_fn=getpass_fn)
+            if picked is None and field.required:
+                print(f"{field.name} is required.", file=sys.stderr)
+                continue
+            if picked is not None:
+                chosen[field.name] = picked
+            break
+    return chosen
+
+
+def configure_env(
+    path: Path,
+    *,
+    values: dict[str, str] | None = None,
+    input_fn=input,
+    getpass_fn=getpass.getpass,
+    write: bool = True,
+) -> dict[str, str]:
+    existing = parse_env(path)
+    extras = {key: value for key, value in existing.items() if key not in {field.name for field in FIELDS}}
+    chosen = prompt_env(existing, values=values, input_fn=input_fn, getpass_fn=getpass_fn)
+    missing = [field.name for field in FIELDS if field.required and not chosen.get(field.name)]
+    if missing:
+        raise ValueError("missing required settings: " + ", ".join(missing))
+    if write:
+        write_env(path, chosen, extras)
+        apply_env(chosen)
+        os.environ["OPENGPU_ENV_FILE"] = str(path)
+    return chosen

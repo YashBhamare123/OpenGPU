@@ -18,23 +18,13 @@ This is a minimal deployment reference for contributors and small internal insta
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-cp .env.example .env
-chmod 600 .env
-```
-
-Review every value in `.env`. Required settings are the database URL, advertised and bind addresses, SMTP sender/relay, allowed browser origins, secure-cookie policy, and the comma-separated `ADMIN_EMAILS` allowlist. `WORKSPACE_ROOT` must be an absolute path with room for per-user `workspace.img` and `scratch.img` files.
-
-Install the storage helper and optional remote SSH token:
-
-```bash
 opengpu setup
-opengpu setup --token "$NGROK_AUTHTOKEN"
 opengpu migrate
 opengpu doctor
 opengpu serve
 ```
 
-`setup` installs the storage helper, pulls `DOCKER_IMAGE` (default `yashbhamare123/opengpu:ml`) if it is not already local, and can store a remote SSH tunnel token. `migrate` applies `postgres/init.sql` to an empty database, records versions on a schema that already matches `init.sql`, or applies only unrecorded numbered upgrades. Rollback (`*_down.sql`) files are never applied automatically. `doctor` repeats the image pull if needed, then checks NVIDIA, SMTP, PostgreSQL, the helper, and workspace free space. It does not install NVIDIA or Docker and does not build the GPU image. `serve` starts the API, scheduler, and local SSH gateway. Remote SSH tunneling is opt-in with `opengpu serve --tunnel` and is not required for LAN use.
+`opengpu setup` prompts for required settings and writes a mode-600 `.env` (or `~/.config/opengpu/env` after `pip install`). Leave `DATABASE_URL` out of setup prompts: Compose starts Postgres and the URL is written to `.env` without printing the password. Use `--skip-postgres` only when you already have a database URL in the environment file. Use `--skip-env` if the file already exists. It then installs the storage helper and pulls `DOCKER_IMAGE` unless skipped. `migrate` applies `postgres/init.sql` to an empty database. `doctor` checks NVIDIA, SMTP, PostgreSQL, the helper, and workspace space. `serve` starts the API, scheduler, and local SSH gateway.
 
 `scripts/configure-docker-storage-backend` is not required for these virtual-disk caps; it only forces Docker onto overlay2 and is optional. Reservations default to a 2 GB persistent workspace and 100 GB scratch disk for `/home`, `/tmp`, and a writable `/etc` copy; administrators can adjust both up to a combined 200 GB. The container root filesystem is read-only so users cannot fill the Docker overlay. The helper owns image creation and loop mounts; the scheduler account does not need general write access to `WORKSPACE_ROOT`.
 

@@ -49,6 +49,7 @@ def test_init_host_runs_installer_with_sudo(tmp_path, monkeypatch):
     installer.write_text("#!/bin/sh\n")
     monkeypatch.setattr(host, "script_path", lambda *_parts: installer)
     monkeypatch.setattr(host, "settings", replace(host.settings, workspace_root=str(tmp_path / "ws")))
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
     captured = {}
 
     def fake_run(command, env=None, check=False):

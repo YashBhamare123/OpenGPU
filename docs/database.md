@@ -55,7 +55,7 @@ The trigger locks the owning team row, which serializes concurrent booking attem
 
 ## Schema changes
 
-`postgres/init.sql` is the complete fresh-install schema. Existing installations use numbered forward and rollback migrations. `opengpu migrate` applies `init.sql` to an empty database and records those versions, stamps a database that already matches `init.sql`, or applies only unrecorded upgrade files. Any schema contribution must:
+`postgres/init.sql` is the complete fresh-install schema. `opengpu setup` starts PostgreSQL with `postgres/compose.yaml` and writes `DATABASE_URL` itself. Existing installations use numbered forward and rollback migrations. `opengpu migrate` applies `init.sql` to an empty database and records those versions, stamps a database that already matches `init.sql`, or applies only unrecorded upgrade files. Any schema contribution must:
 
 1. Update `init.sql` for new installations.
 2. Add an idempotent forward migration for existing installations.
