@@ -21,7 +21,7 @@ The current deployment profile is an NVIDIA A6000 with 48 GB VRAM, CUDA 12.8, 16
 - One current or future reservation per user
 - Fresh SSH password for every reservation
 - GPU container start and removal tied to reservation state
-- Persistent, quota-limited bind-mounted `/workspace` and SSH host keys
+- Persistent, size-capped bind-mounted `/workspace` (ext4 image) and SSH host keys
 - Audit events, provisioning retries, and scheduler health reporting
 - Server-authorized admin page for user allowlisting, delegated bookings, cancellations, and explicit extended-duration overrides
 - CUDA 12.8 image with PyTorch and common ML tooling

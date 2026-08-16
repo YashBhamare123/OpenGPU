@@ -16,14 +16,14 @@ The framework layer is separate from the broader ML requirements so changes to a
 
 The entrypoint:
 
-1. Creates the Linux user named by `TEAM_NAME`.
+1. Creates the Linux user named by `TEAM_NAME` without a default home or lastlog update (`useradd -M -l`), so `/home` and `/tmp` stay on the scratch mounts.
 2. Applies `TEAM_PASSWORD_HASH` with `chpasswd -e`.
 3. Grants passwordless sudo and suppresses the Ubuntu MOTD.
-4. Assigns `/workspace` to the user.
+4. Assigns `/workspace` to the user and ensures `/tmp` is mode `1777`.
 5. Creates missing Ed25519, ECDSA, and RSA host keys in `/etc/ssh/host_keys`.
 6. Starts `sshd` in the foreground.
 
-Host private keys are removed during image construction and generated only at runtime. The bundled profile script prints the terminal welcome banner for interactive SSH sessions.
+`/etc` is a bind-mounted copy of the image `/etc` on the scratch disk so the root filesystem can stay read-only. Host private keys are removed during image construction and generated only at runtime. The bundled profile script prints the terminal welcome banner for interactive SSH sessions.
 
 ## Building and testing
 

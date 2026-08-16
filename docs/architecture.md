@@ -13,7 +13,8 @@ flowchart LR
     S -->|provision and reconcile| D[Docker Engine]
     S -->|reservation credentials| M
     D --> C[GPU user container]
-    C --> W[Bind-mounted workspace]
+    C --> W[Bind-mounted workspace disk]
+    C --> T[Bind-mounted scratch disk]
     C --> K[Bind-mounted SSH host keys]
 ```
 
@@ -44,7 +45,7 @@ stateDiagram-v2
     Removed --> [*]: container deleted
 ```
 
-Future reservations retain their pre-provisioned stopped container. At the start time the scheduler starts it. Cancellation or expiry removes the container rather than merely stopping it. `/workspace` and SSH host keys remain in host directories and are reused when a later reservation provisions a new container.
+Future reservations retain their pre-provisioned stopped container. At the start time the scheduler starts it. Cancellation or expiry removes the container rather than merely stopping it. `/workspace` data remains in the user's sparse image; scratch disks and loop mounts are released when no current or future reservation remains. SSH host keys stay in their host directory.
 
 ## Consistency model
 

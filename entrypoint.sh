@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if ! id "$TEAM_NAME" >/dev/null 2>&1; then
-    useradd -m -s /bin/bash "$TEAM_NAME"
+    useradd -M -l -d "/home/$TEAM_NAME" -s /bin/bash "$TEAM_NAME"
 fi
 
 if [[ ! "${WORKSPACE_GB:-}" =~ ^[1-9][0-9]*$ || ! "${TEMP_STORAGE_GB:-}" =~ ^[1-9][0-9]*$ ]]; then
@@ -15,15 +15,19 @@ chmod 0644 /etc/opengpu-storage.env
 # Keep SSH startup focused on the Cynaptics workspace banner instead of the
 # distribution MOTD and last-login notice.
 touch "/home/$TEAM_NAME/.hushlogin"
-chown "$TEAM_NAME:$TEAM_NAME" "/home/$TEAM_NAME/.hushlogin"
+chown "$TEAM_NAME:$TEAM_NAME" "/home/$TEAM_NAME" "/home/$TEAM_NAME/.hushlogin"
 
 echo "$TEAM_NAME:$TEAM_PASSWORD_HASH" | chpasswd -e
 
 echo "$TEAM_NAME ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$TEAM_NAME"
 chmod 440 "/etc/sudoers.d/$TEAM_NAME"
+# scratch /etc is bind-mounted; login shells need to read /etc/profile.
+chmod 0755 /etc
 
-mkdir -p /workspace
 chown "$TEAM_NAME:$TEAM_NAME" /workspace
+if [[ "$(stat -c '%a' /tmp 2>/dev/null || true)" != "1777" ]]; then
+    chmod 1777 /tmp
+fi
 
 # Host keys live in a dedicated root-owned host directory so they are unique per user
 # and remain stable when the application recreates the container.
@@ -39,5 +43,8 @@ if [[ ! -s /etc/ssh/host_keys/ssh_host_rsa_key ]]; then
 fi
 chmod 600 /etc/ssh/host_keys/ssh_host_*_key
 chmod 644 /etc/ssh/host_keys/ssh_host_*_key.pub
+
+# read_only + tmpfs /run hides the image's privilege-separation directory.
+install -d -m 0755 -o root -g root /run/sshd
 
 exec /usr/sbin/sshd -D -e

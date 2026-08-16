@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import settings
 from database import get_connection
-from manager import APP_LABEL, get_client, user_storage_paths
+from manager import APP_LABEL, get_client, prepare_user_storage, storage_destination_has_user_files
 
 
 def source_volume(name: str, user_id: int, allow_unlabelled: bool = False):
@@ -30,7 +30,7 @@ def source_volume(name: str, user_id: int, allow_unlabelled: bool = False):
 
 
 def copy_volume(name: str, destination: Path) -> bool:
-    if any(destination.iterdir()):
+    if storage_destination_has_user_files(destination):
         raise RuntimeError(f"Destination is not empty: {destination}")
     container = get_client().containers.create(
         image=settings.docker_image,
@@ -56,10 +56,17 @@ def copy_volume(name: str, destination: Path) -> bool:
 def main() -> None:
     with get_connection() as connection:
         teams = connection.execute(
-            "SELECT id,container_name,volume_name,legacy_volume FROM teams ORDER BY id"
+            """SELECT t.id,t.container_name,t.volume_name,t.legacy_volume,
+                      (SELECT r.workspace_gb FROM reservations r
+                       WHERE r.team_id=t.id AND NOT r.cancelled AND r.end_time>NOW()
+                       ORDER BY r.start_time LIMIT 1),
+                      (SELECT r.temp_storage_gb FROM reservations r
+                       WHERE r.team_id=t.id AND NOT r.cancelled AND r.end_time>NOW()
+                       ORDER BY r.start_time LIMIT 1)
+               FROM teams t ORDER BY t.id"""
         ).fetchall()
 
-    for user_id, container_name, workspace_volume, legacy_volume in teams:
+    for user_id, container_name, workspace_volume, legacy_volume, workspace_gb, temp_storage_gb in teams:
         existing_container = None
         if container_name:
             try:
@@ -70,19 +77,29 @@ def main() -> None:
                 if existing_container.status == "running":
                     raise RuntimeError(f"Stop {container_name} before migrating user {user_id}")
             except docker.errors.NotFound:
-                pass
+                existing_container = None
 
-        workspace, host_keys = user_storage_paths(user_id)
+        host_key_volume = f"gpu-hostkeys-{user_id}"
+        will_copy = bool(
+            (workspace_volume and source_volume(workspace_volume, user_id, legacy_volume))
+            or source_volume(host_key_volume, user_id)
+        )
+        if not will_copy:
+            print(f"user {user_id}: no legacy volumes")
+            continue
+        if existing_container is not None:
+            existing_container.remove()
+
+        workspace, host_keys, _scratch_home, _scratch_tmp, _scratch_etc = prepare_user_storage(
+            user_id, workspace_gb or 2, temp_storage_gb or 100, convert=True,
+        )
         copied = []
         if workspace_volume and source_volume(workspace_volume, user_id, legacy_volume):
             copy_volume(workspace_volume, workspace)
             copied.append(workspace_volume)
-        host_key_volume = f"gpu-hostkeys-{user_id}"
         if source_volume(host_key_volume, user_id):
             copy_volume(host_key_volume, host_keys)
             copied.append(host_key_volume)
-        if copied and existing_container is not None:
-            existing_container.remove()
 
         if copied:
             with get_connection() as connection:
