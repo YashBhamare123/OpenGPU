@@ -6,6 +6,13 @@ import pytest
 import manager
 
 
+def test_fresh_ext4_mount_is_empty_for_volume_copy(tmp_path):
+    (tmp_path / "lost+found").mkdir()
+    assert manager.storage_destination_has_user_files(tmp_path) is False
+    (tmp_path / "notes.txt").write_text("keep")
+    assert manager.storage_destination_has_user_files(tmp_path) is True
+
+
 def test_unmanaged_container_is_rejected(monkeypatch):
     foreign = type("Container", (), {"labels": {}, "name": "gpu-user-1"})()
     fake_client = type("Client", (), {"containers": type("Containers", (), {"get": lambda _self, _name: foreign})()})()

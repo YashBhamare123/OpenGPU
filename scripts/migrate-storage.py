@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import settings
 from database import get_connection
-from manager import APP_LABEL, get_client, prepare_user_storage
+from manager import APP_LABEL, get_client, prepare_user_storage, storage_destination_has_user_files
 
 
 def source_volume(name: str, user_id: int, allow_unlabelled: bool = False):
@@ -30,7 +30,7 @@ def source_volume(name: str, user_id: int, allow_unlabelled: bool = False):
 
 
 def copy_volume(name: str, destination: Path) -> bool:
-    if any(destination.iterdir()):
+    if storage_destination_has_user_files(destination):
         raise RuntimeError(f"Destination is not empty: {destination}")
     container = get_client().containers.create(
         image=settings.docker_image,

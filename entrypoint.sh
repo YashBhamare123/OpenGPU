@@ -42,4 +42,7 @@ fi
 chmod 600 /etc/ssh/host_keys/ssh_host_*_key
 chmod 644 /etc/ssh/host_keys/ssh_host_*_key.pub
 
+# read_only + tmpfs /run hides the image's privilege-separation directory.
+install -d -m 0755 -o root -g root /run/sshd
+
 exec /usr/sbin/sshd -D -e

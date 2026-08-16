@@ -106,6 +106,11 @@ def prepare_user_storage(
     return workspace, host_keys, scratch_home, scratch_tmp, scratch_etc
 
 
+def storage_destination_has_user_files(destination: Path) -> bool:
+    """True when a mount already holds data besides ext4's lost+found."""
+    return any(path.name != "lost+found" for path in destination.iterdir())
+
+
 def seed_scratch_etc(scratch_etc: Path) -> None:
     container = get_client().containers.create(
         image=settings.docker_image,
