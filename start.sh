@@ -184,9 +184,9 @@ from database import get_connection
 
 root = Path(settings.workspace_root)
 probe = root
-while not probe.exists() and probe != probe.parent:
-    probe = probe.parent
 try:
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
     usage = os.statvfs(probe)
 except OSError as exc:
     print(f"Warning: could not inspect free space on {probe}: {exc}", file=sys.stderr)
