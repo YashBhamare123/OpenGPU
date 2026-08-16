@@ -172,12 +172,15 @@ def check_workspace() -> Check:
     if not root.is_absolute():
         return Check("workspace", False, "WORKSPACE_ROOT must be an absolute path")
     probe = root
-    try:
-        while not probe.exists() and probe != probe.parent:
+    usage = None
+    while True:
+        try:
+            usage = os.statvfs(probe)
+            break
+        except OSError as exc:
+            if probe == probe.parent:
+                return Check("workspace", False, f"cannot inspect {root}: {exc}", fatal=False)
             probe = probe.parent
-        usage = os.statvfs(probe)
-    except OSError as exc:
-        return Check("workspace", False, f"cannot inspect {probe}: {exc}", fatal=False)
     free_gb = (usage.f_bavail * usage.f_frsize) // (1024 ** 3)
     needed = None
     try:
@@ -251,7 +254,6 @@ def collect_checks() -> list[Check]:
         check_database(),
         check_storage_helper(),
         check_workspace(),
-        check_remote_access(),
     ]
 
 
@@ -304,14 +306,13 @@ def setup(*, token: str | None = None, skip_helper: bool = False, skip_image: bo
     return 0
 
 
-def serve(*, host: str, port: int, tunnel: bool = True) -> None:
+def serve(*, host: str, port: int, tunnel: bool = False) -> None:
     import threading
 
     import uvicorn
 
     from gateway import serve_gateway
     from scheduler import run as run_scheduler
-    from tunnel import ngrok_token, start_tunnel, wait_for_endpoint
 
     image = ensure_image()
     if not image.ok:
@@ -333,15 +334,20 @@ def serve(*, host: str, port: int, tunnel: bool = True) -> None:
     for worker in workers:
         worker.start()
 
-    if tunnel and ngrok_token():
-        ngrok = start_tunnel(settings.ssh_public_port)
-        ssh_host, ssh_port = wait_for_endpoint(ngrok)
-        os.environ["OPENGPU_SSH_HOST"] = ssh_host
-        os.environ["OPENGPU_SSH_PORT"] = str(ssh_port)
-        print(f"Remote SSH: ssh <user>@{ssh_host} -p {ssh_port}")
-    elif tunnel:
-        print("No NGROK_AUTHTOKEN; serving locally. SSH gateway is "
-              f"{settings.ssh_gateway_bind}:{settings.ssh_public_port}")
+    if tunnel:
+        from tunnel import ngrok_token, start_tunnel, wait_for_endpoint
+
+        if not ngrok_token():
+            print("No NGROK_AUTHTOKEN; serving locally.", file=sys.stderr, flush=True)
+        else:
+            ngrok = start_tunnel(settings.ssh_public_port)
+            ssh_host, ssh_port = wait_for_endpoint(ngrok)
+            os.environ["OPENGPU_SSH_HOST"] = ssh_host
+            os.environ["OPENGPU_SSH_PORT"] = str(ssh_port)
+            print(f"Remote SSH: ssh <user>@{ssh_host} -p {ssh_port}", flush=True)
+
+    print(f"SSH gateway: {settings.ssh_gateway_bind}:{settings.ssh_public_port}", flush=True)
+    print(f"API: http://{host}:{port}", flush=True)
 
     try:
         uvicorn.run("api:app", host=host, port=port)

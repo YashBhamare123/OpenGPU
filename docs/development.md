@@ -42,7 +42,7 @@ opengpu doctor
 opengpu serve
 ```
 
-`./start.sh --check` also runs `opengpu doctor` (via `python -m cli doctor`). The combined script requires Docker because it starts the scheduler. `opengpu serve` runs the API, scheduler, and SSH gateway together.
+`./start.sh --check` also runs `opengpu doctor` (via `python -m cli doctor`). `opengpu serve` runs the API, scheduler, and local SSH gateway together. Do not pass `--tunnel` unless you are testing remote SSH.
 
 ## Change boundaries
 

@@ -17,8 +17,7 @@ Usage: ./start.sh [--check] [--build] [--tunnel]
   --tunnel Start the configured permanent ngrok HTTPS endpoint as well.
   --help   Show this help.
 
-The script starts the API and scheduler together in the foreground. Press
-Ctrl+C to stop both. Production systemd deployment should use deploy/*.service.
+The script starts `opengpu serve` in the foreground. Press Ctrl+C to stop.
 EOF
 }
 
@@ -123,7 +122,6 @@ PY
 )"
 
 api_pid=""
-scheduler_pid=""
 tunnel_pid=""
 
 cleanup() {
@@ -133,29 +131,15 @@ cleanup() {
   if [[ -n "$api_pid" ]] && kill -0 "$api_pid" 2>/dev/null; then
     kill -TERM "$api_pid" 2>/dev/null || true
   fi
-  if [[ -n "$scheduler_pid" ]] && kill -0 "$scheduler_pid" 2>/dev/null; then
-    kill -TERM "$scheduler_pid" 2>/dev/null || true
-  fi
   if [[ -n "$tunnel_pid" ]] && kill -0 "$tunnel_pid" 2>/dev/null; then
     kill -TERM "$tunnel_pid" 2>/dev/null || true
   fi
   [[ -z "$api_pid" ]] || wait "$api_pid" 2>/dev/null || true
-  [[ -z "$scheduler_pid" ]] || wait "$scheduler_pid" 2>/dev/null || true
   [[ -z "$tunnel_pid" ]] || wait "$tunnel_pid" 2>/dev/null || true
 }
 trap cleanup INT TERM EXIT
 
-echo "Starting scheduler..."
-python3 -m cli scheduler &
-scheduler_pid=$!
-sleep 1
-if ! kill -0 "$scheduler_pid" 2>/dev/null; then
-  wait "$scheduler_pid" || true
-  echo "Scheduler failed to start. Check DATABASE_URL, Docker access, and whether another scheduler is active." >&2
-  exit 1
-fi
-
-echo "Starting API on $api_host:$api_port..."
+echo "Starting OpenGPU..."
 python3 -m cli serve --host "$api_host" --port "$api_port" &
 api_pid=$!
 sleep 1
@@ -183,10 +167,10 @@ echo "API: http://$api_host:$api_port"
 if [[ "$START_TUNNEL" == true ]]; then
   echo "Public URL: https://$ngrok_domain"
 fi
-echo "Press Ctrl+C to stop both processes."
+echo "Press Ctrl+C to stop."
 
 set +e
-child_pids=("$api_pid" "$scheduler_pid")
+child_pids=("$api_pid")
 if [[ -n "$tunnel_pid" ]]; then
   child_pids+=("$tunnel_pid")
 fi
@@ -194,7 +178,7 @@ wait -n "${child_pids[@]}"
 exit_code=$?
 set -e
 
-if kill -0 "$api_pid" 2>/dev/null && kill -0 "$scheduler_pid" 2>/dev/null; then
+if kill -0 "$api_pid" 2>/dev/null; then
   echo "A child process exited unexpectedly." >&2
 fi
 exit "$exit_code"

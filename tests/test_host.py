@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from dataclasses import replace
 
 import host
@@ -77,6 +79,24 @@ def test_format_report_marks_warnings():
     assert "ok    docker:" in report
     assert "warn  workspace:" in report
     assert "fail  nvidia:" in report
+
+
+def test_workspace_uses_ancestor_when_unreadable(tmp_path, monkeypatch):
+    root = tmp_path / "users"
+    root.mkdir()
+    monkeypatch.setattr(host, "settings", replace(host.settings, workspace_root=str(root)))
+
+    def fake_statvfs(path):
+        if Path(path) == root:
+            raise PermissionError("[Errno 13] Permission denied")
+        return type("U", (), {"f_bavail": 50 * 1024 ** 3 // 4096, "f_frsize": 4096})()
+
+    monkeypatch.setattr(host.os, "statvfs", fake_statvfs)
+    monkeypatch.setattr(host, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("no database")))
+    check = host.check_workspace()
+    assert check.ok is True
+    assert "50 GB free" in check.detail
+    assert str(tmp_path) in check.detail
 
 
 def test_doctor_exit_code(monkeypatch, capsys):
