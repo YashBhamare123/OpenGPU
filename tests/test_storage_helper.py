@@ -126,6 +126,9 @@ def test_prepare_is_idempotent_and_teardown_removes_scratch(tmp_path):
     assert (user / "scratch" / "tmp").is_dir()
     assert (user / "scratch" / "etc").is_dir()
     assert (user / "scratch" / "etc").stat().st_mode & 0o777 == 0o755
+    (user / "workspace" / "lost+found").mkdir()
+    _run(["prepare", "7", "2", "3"], env)
+    assert not (user / "workspace" / "lost+found").exists()
     second = _run(["prepare", "7", "2", "3"], env)
     assert second.returncode == 0
     _run(["release", "7"], env)

@@ -103,11 +103,20 @@ grow_image() {
 mount_image() {
   local img=$1 dir=$2 loop
   if is_mountpoint "$dir"; then
+    remove_lost_found "$dir"
     return 0
   fi
   install_dir 0750 "$dir"
   loop=$(attach_loop "$img")
   mount -- "$loop" "$dir"
+  remove_lost_found "$dir"
+}
+
+remove_lost_found() {
+  local dir=$1
+  if [[ -d "$dir/lost+found" ]]; then
+    rmdir -- "$dir/lost+found" 2>/dev/null || true
+  fi
 }
 
 copy_directory_into_image() {
