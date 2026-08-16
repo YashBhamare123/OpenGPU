@@ -40,6 +40,7 @@ erDiagram
 - `provisioning_jobs`: one mutable job per user with purpose, state, attempts, retry time, and last error.
 - `audit_events`: append-only application and administration events with JSON details.
 - `service_heartbeats`: scheduler freshness and most recent reconciliation error.
+- `schema_migrations`: versions applied by `opengpu migrate`.
 
 ## Enforced reservation rules
 
@@ -54,7 +55,7 @@ The trigger locks the owning team row, which serializes concurrent booking attem
 
 ## Schema changes
 
-`postgres/init.sql` is the complete fresh-install schema. Existing installations use numbered forward and rollback migrations. Any schema contribution must:
+`postgres/init.sql` is the complete fresh-install schema. Existing installations use numbered forward and rollback migrations. `opengpu migrate` applies `init.sql` to an empty database and records those versions, stamps a database that already matches `init.sql`, or applies only unrecorded upgrade files. Any schema contribution must:
 
 1. Update `init.sql` for new installations.
 2. Add an idempotent forward migration for existing installations.

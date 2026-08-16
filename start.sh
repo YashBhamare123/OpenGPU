@@ -79,138 +79,8 @@ if ! flock -n 9; then
   exit 1
 fi
 
-echo "Checking configuration..."
-python3 - <<'PY'
-import os
-from config import settings
-
-required = (
-    "DATABASE_URL", "SERVER_IP", "DOCKER_BIND_IP", "SMTP_HOST",
-    "SMTP_PORT", "SMTP_FROM", "ALLOWED_ORIGINS", "COOKIE_SECURE",
-)
-missing = [name for name in required if not os.environ.get(name, "").strip()]
-if settings.ssh_port_start < 1024 or settings.ssh_port_end > 65535:
-    raise SystemExit("SSH port range must stay between 1024 and 65535")
-if settings.ssh_port_start > settings.ssh_port_end:
-    raise SystemExit("SSH_PORT_START must be less than or equal to SSH_PORT_END")
-if settings.reservation_limit_minutes < 15 or settings.reservation_limit_minutes % 15:
-    raise SystemExit("RESERVATION_LIMIT_MINUTES must be at least 15 and divisible by 15")
-if missing:
-    raise SystemExit("Missing required .env variables: " + ", ".join(missing))
-if settings.cookie_secure and not all(origin.startswith("https://") for origin in settings.allowed_origins):
-    raise SystemExit("COOKIE_SECURE=true requires HTTPS values in ALLOWED_ORIGINS")
-print("Configuration: ok")
-PY
-
-workspace_root="$(python3 - <<'PY'
-from config import settings
-print(settings.workspace_root)
-PY
-)"
-if [[ "$workspace_root" != /* ]]; then
-  echo "WORKSPACE_ROOT must be an absolute path." >&2
-  exit 1
-fi
-storage_helper="$(python3 - <<'PY'
-from config import settings
-print(settings.storage_helper)
-PY
-)"
-if [[ "$storage_helper" != /* || ! -x "$storage_helper" ]]; then
-  echo "STORAGE_HELPER must be an installed executable at an absolute path: $storage_helper" >&2
-  exit 1
-fi
-if ! sudo -n -l "$storage_helper" prepare 1 2 3 >/dev/null 2>&1 \
-  || ! sudo -n -l "$storage_helper" prepare 1 2 3 convert >/dev/null 2>&1 \
-  || ! sudo -n -l "$storage_helper" release 1 >/dev/null 2>&1; then
-  echo "The scheduler cannot run STORAGE_HELPER without a password. Reinstall: sudo ./scripts/install-storage-helper" >&2
-  exit 1
-fi
-echo "Storage helper: ok ($workspace_root)"
-
-echo "Checking PostgreSQL and hardened schema..."
-python3 - <<'PY'
-from database import get_connection
-
-required_tables = {
-    "teams", "reservations", "auth_challenges", "sessions",
-    "provisioning_jobs", "audit_events", "service_heartbeats",
-}
-required_team_columns = {
-    "ssh_password_hash", "provisioning_state", "volume_name", "legacy_volume",
-}
-required_reservation_columns = {"duration_override", "workspace_gb", "temp_storage_gb"}
-with get_connection() as connection:
-    tables = {
-        row[0] for row in connection.execute(
-            "SELECT tablename FROM pg_tables WHERE schemaname='public'"
-        )
-    }
-    columns = {
-        row[0] for row in connection.execute(
-            "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='teams'"
-        )
-    }
-    reservation_columns = {
-        row[0] for row in connection.execute(
-            "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='reservations'"
-        )
-    }
-missing_tables = sorted(required_tables - tables)
-missing_columns = sorted(required_team_columns - columns)
-missing_reservation_columns = sorted(required_reservation_columns - reservation_columns)
-if missing_tables or missing_columns or missing_reservation_columns:
-    detail = []
-    if missing_tables:
-        detail.append("tables: " + ", ".join(missing_tables))
-    if missing_columns:
-        detail.append("teams columns: " + ", ".join(missing_columns))
-    if missing_reservation_columns:
-        detail.append("reservations columns: " + ", ".join(missing_reservation_columns))
-    raise SystemExit(
-        "Database is not migrated (missing " + "; ".join(detail) + "). "
-        "Apply the pending numbered migrations after taking a backup."
-    )
-print("PostgreSQL schema: ok")
-PY
-
-python3 - <<'PY'
-import os
-import sys
-from pathlib import Path
-
-from config import settings
-from database import get_connection
-
-root = Path(settings.workspace_root)
-probe = root
-try:
-    while not probe.exists() and probe != probe.parent:
-        probe = probe.parent
-    usage = os.statvfs(probe)
-except OSError as exc:
-    print(f"Warning: could not inspect free space on {probe}: {exc}", file=sys.stderr)
-    raise SystemExit(0)
-free_gb = (usage.f_bavail * usage.f_frsize) // (1024 ** 3)
-with get_connection() as connection:
-    row = connection.execute(
-        """SELECT temp_storage_gb FROM reservations
-           WHERE NOT cancelled AND end_time > NOW()
-           ORDER BY start_time LIMIT 1"""
-    ).fetchone()
-if row and free_gb < row[0]:
-    print(
-        f"Warning: {root} has {free_gb} GB free; the next reservation needs "
-        f"{row[0]} GB of scratch disk.",
-        file=sys.stderr,
-    )
-PY
-
-echo "Checking Docker access and image..."
-if ! docker info >/dev/null 2>&1; then
-  echo "Cannot access Docker. Run as the scheduler-capable user or add it to the docker group." >&2
-  exit 1
-fi
+echo "Checking host..."
+python3 -m cli doctor
 
 docker_image="$(python3 - <<'PY'
 from config import settings
@@ -227,10 +97,10 @@ if ! docker image inspect "$docker_image" >/dev/null 2>&1; then
   echo "Docker image $docker_image is missing. Run: ./start.sh --build" >&2
   exit 1
 fi
-echo "Docker: ok ($docker_image)"
+echo "Docker image: ok ($docker_image)"
 
 python3 -m py_compile \
-  api.py admin.py config.py database.py mailer.py manager.py scheduler.py security.py
+  api.py admin.py cli.py config.py database.py gateway.py host.py mailer.py manager.py migrate.py paths.py scheduler.py security.py tunnel.py
 
 if [[ "$CHECK_ONLY" == true ]]; then
   echo "All checks passed."
@@ -276,7 +146,7 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 echo "Starting scheduler..."
-python3 scheduler.py &
+python3 -m cli scheduler &
 scheduler_pid=$!
 sleep 1
 if ! kill -0 "$scheduler_pid" 2>/dev/null; then
@@ -286,7 +156,7 @@ if ! kill -0 "$scheduler_pid" 2>/dev/null; then
 fi
 
 echo "Starting API on $api_host:$api_port..."
-python3 -m uvicorn api:app --host "$api_host" --port "$api_port" &
+python3 -m cli serve --host "$api_host" --port "$api_port" &
 api_pid=$!
 sleep 1
 if ! kill -0 "$api_pid" 2>/dev/null; then

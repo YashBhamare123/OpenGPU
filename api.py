@@ -2,7 +2,6 @@ import hmac
 import json
 from datetime import datetime, timedelta, timezone
 from html import escape
-from pathlib import Path
 from typing import Annotated
 
 import psycopg
@@ -22,6 +21,7 @@ from pydantic import BaseModel, EmailStr, field_validator
 from config import settings
 from database import get_connection
 from mailer import send_cancellation, send_otp
+from paths import ROOT, frontend_path
 from security import (
     generate_otp,
     generate_token,
@@ -32,7 +32,7 @@ from security import (
 )
 
 app = FastAPI(title="OpenGPU")
-app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
+app.mount("/frontend", StaticFiles(directory=frontend_path()), name="frontend")
 
 
 @app.middleware("http")
@@ -112,24 +112,24 @@ def current_user(session: str | None = Cookie(default=None)) -> dict:
 @app.get("/", response_class=HTMLResponse)
 def frontend(request: Request):
     base_url = settings.public_base_url or str(request.base_url).rstrip("/")
-    html = Path("frontend/index.html").read_text(encoding="utf-8")
+    html = frontend_path("index.html").read_text(encoding="utf-8")
     html = html.replace("__PUBLIC_URL__", escape(base_url, quote=True))
     return HTMLResponse(html)
 
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
-    return FileResponse("frontend/favicon.svg", media_type="image/svg+xml")
+    return FileResponse(frontend_path("favicon.svg"), media_type="image/svg+xml")
 
 
 @app.get("/social-card.png", include_in_schema=False)
 def social_card():
-    return FileResponse("image.png", media_type="image/png")
+    return FileResponse(ROOT / "image.png", media_type="image/png")
 
 
 @app.get("/admin")
 def admin_frontend():
-    return FileResponse("frontend/admin.html")
+    return FileResponse(frontend_path("admin.html"))
 
 
 def require_admin(user: Annotated[dict, Depends(current_user)]) -> dict:

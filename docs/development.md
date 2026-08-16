@@ -25,7 +25,9 @@ chmod 600 .env
 | Docker provisioning | `manager.py`, `entrypoint.sh` |
 | User image | `Dockerfile`, `requirements-ml.txt` |
 | Email | `mailer.py` |
-| Administration | `admin.py` |
+| Administration | `admin.py`, `python -m cli admin` |
+| Local CLI | `opengpu setup`, `opengpu migrate`, `opengpu doctor`, `opengpu serve` |
+| Asset paths | `paths.py` |
 | Local supervision | `start.sh` |
 | Production units | `deploy/` |
 | Tests | `tests/`, `scripts/run-tests.sh` |
@@ -35,11 +37,12 @@ chmod 600 .env
 The frontend is served by FastAPI from `/`; it has no Node build step. With a configured PostgreSQL database and `.env`:
 
 ```bash
-./start.sh --check
-./start.sh
+opengpu migrate
+opengpu doctor
+opengpu serve
 ```
 
-The combined script requires Docker because it starts the scheduler. For isolated API work, run Uvicorn directly and expect readiness to remain unavailable without a live scheduler heartbeat.
+`./start.sh --check` also runs `opengpu doctor` (via `python -m cli doctor`). The combined script requires Docker because it starts the scheduler. `opengpu serve` runs the API, scheduler, and SSH gateway together.
 
 ## Change boundaries
 

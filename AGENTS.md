@@ -9,7 +9,7 @@ GPU containers.
 
 - API and static frontend: `api.py`, `frontend/`
 - Authentication: `security.py`
-- Database and migrations: `database.py`, `postgres/`
+- Database and migrations: `database.py`, `migrate.py`, `postgres/`
 - Scheduling and provisioning: `scheduler.py`, `manager.py`
 - User image and container startup: `Dockerfile`, `entrypoint.sh`
 - Email, administration, and local supervision: `mailer.py`, `admin.py`, `start.sh`
@@ -89,7 +89,7 @@ For relevant static checks:
 
 ```bash
 bash -n start.sh entrypoint.sh scripts/run-tests.sh
-python -m py_compile api.py admin.py config.py database.py mailer.py manager.py scheduler.py security.py
+python -m py_compile api.py admin.py cli.py config.py database.py gateway.py host.py mailer.py manager.py migrate.py paths.py scheduler.py security.py tunnel.py
 docker build --check .
 ```
 

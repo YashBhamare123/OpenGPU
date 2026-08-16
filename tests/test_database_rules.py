@@ -1,13 +1,13 @@
 import os
 import threading
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import psycopg
 import pytest
 from fastapi import HTTPException
 
 import api
+from paths import postgres_path
 
 TEST_URL = os.environ.get("TEST_DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(not TEST_URL, reason="TEST_DATABASE_URL is not configured")
@@ -18,7 +18,7 @@ def safe_test_database():
     if not TEST_URL.rsplit("/", 1)[-1].split("?", 1)[0].endswith("_test"):
         pytest.fail("Refusing to use a database whose name does not end in _test")
     with psycopg.connect(TEST_URL, autocommit=True) as conn:
-        conn.execute(Path("postgres/init.sql").read_text())
+        conn.execute(postgres_path("init.sql").read_text())
     yield
     with psycopg.connect(TEST_URL, autocommit=True) as conn:
         conn.execute("TRUNCATE audit_events,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")

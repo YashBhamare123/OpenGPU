@@ -53,3 +53,17 @@ def test_credentials_and_cancellation_share_transactional_headers_and_template(m
     cancellation = captured[1]
     assert "reservation cancelled" in cancellation["Subject"].lower()
     assert "has been cancelled" in cancellation.get_body(preferencelist=("plain",)).get_content()
+
+
+def test_credentials_use_tunnel_endpoint_when_set(monkeypatch):
+    captured = []
+    monkeypatch.setenv("OPENGPU_SSH_HOST", "6.tcp.ngrok.io")
+    monkeypatch.setenv("OPENGPU_SSH_PORT", "12345")
+    monkeypatch.setattr(mailer, "settings", replace(
+        mailer.settings, smtp_from="OpenGPU <opengpu@example.edu>", server_ip="10.0.0.10"
+    ))
+    monkeypatch.setattr(mailer, "_deliver", captured.append)
+    mailer.send_credentials("person@example.edu", "gpu1", "secret", 22001)
+    plain = captured[0].get_body(preferencelist=("plain",)).get_content()
+    assert "ssh gpu1@6.tcp.ngrok.io -p 12345" in plain
+    assert "22001" not in plain

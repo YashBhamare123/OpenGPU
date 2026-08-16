@@ -1,9 +1,38 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+from paths import ROOT
+
+
+def _load_env() -> None:
+    specified = os.environ.get("OPENGPU_ENV_FILE", "").strip()
+    if specified:
+        load_dotenv(Path(specified), override=False)
+        return
+    candidates = (
+        Path("/etc/opengpu/env"),
+        Path("/etc/aiml-gpu-reservation.env"),
+        Path.home() / ".config/opengpu/env",
+        ROOT / ".env",
+        Path.cwd() / ".env",
+    )
+    seen: set[Path] = set()
+    for path in candidates:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            continue
+        if resolved in seen or not path.is_file():
+            continue
+        seen.add(resolved)
+        load_dotenv(path, override=False)
+        break
+
+
+_load_env()
 
 
 def _int(name: str, default: int) -> int:
@@ -15,7 +44,7 @@ class Settings:
     database_url: str = os.environ.get("DATABASE_URL", "")
     server_ip: str = os.environ.get("SERVER_IP", "127.0.0.1")
     docker_bind_ip: str = os.environ.get("DOCKER_BIND_IP", "127.0.0.1")
-    docker_image: str = os.environ.get("DOCKER_IMAGE", "opengpu:ml")
+    docker_image: str = os.environ.get("DOCKER_IMAGE", "yashbhamare123/opengpu:ml")
     workspace_root: str = os.environ.get("WORKSPACE_ROOT", "/var/lib/docker/opengpu-workspaces")
     storage_helper: str = os.environ.get("STORAGE_HELPER", "/usr/local/sbin/opengpu-storage-init")
     ssh_port_start: int = _int("SSH_PORT_START", 22001)
@@ -47,6 +76,8 @@ class Settings:
         "ACCESS_CONTACT_EMAIL", "cynaptics@iiti.ac.in"
     ).strip().lower()
     public_base_url: str = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    ssh_public_port: int = _int("SSH_PUBLIC_PORT", 2222)
+    ssh_gateway_bind: str = os.environ.get("SSH_GATEWAY_BIND", "127.0.0.1")
 
 
 settings = Settings()
