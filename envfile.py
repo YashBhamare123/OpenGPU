@@ -129,8 +129,12 @@ def _is_skip(answer: str) -> bool:
     return answer.strip().lower() in SKIP_ANSWERS
 
 
-def _prompt_one(field: EnvField, current: str, *, input_fn, getpass_fn) -> str | None:
-    shown = current or field.default
+def _field_default(field: EnvField, detected: dict[str, str]) -> str:
+    return detected.get(field.name) or field.default
+
+
+def _prompt_one(field: EnvField, current: str, *, input_fn, getpass_fn, detected: dict[str, str]) -> str | None:
+    shown = current or _field_default(field, detected)
     if field.required:
         hint = f" [{shown}]" if shown else " [required]"
     else:
@@ -158,39 +162,50 @@ def prompt_env(
     values: dict[str, str] | None = None,
     input_fn=input,
     getpass_fn=getpass.getpass,
+    detected: dict[str, str] | None = None,
 ) -> dict[str, str]:
+    detected = dict(detected or {})
     chosen: dict[str, str] = {}
     smtp_followups = {"SMTP_PORT", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD"}
     for field in FIELDS:
         if field.name in smtp_followups and not chosen.get("SMTP_HOST"):
             continue
         current = existing.get(field.name, os.environ.get(field.name, ""))
+        fallback = _field_default(field, detected)
         if values is not None:
             if field.name in values:
                 raw = values[field.name]
                 if field.required:
-                    chosen[field.name] = raw or field.default
+                    chosen[field.name] = raw or fallback
                 elif not _is_skip(raw):
                     chosen[field.name] = raw
-                elif field.default:
-                    chosen[field.name] = field.default
+                elif fallback:
+                    chosen[field.name] = fallback
                 continue
             if field.required:
-                chosen[field.name] = current or field.default
+                chosen[field.name] = current or fallback
             elif current:
                 chosen[field.name] = current
-            elif field.default:
-                chosen[field.name] = field.default
+            elif fallback:
+                chosen[field.name] = fallback
             continue
         while True:
-            picked = _prompt_one(field, current, input_fn=input_fn, getpass_fn=getpass_fn)
+            picked = _prompt_one(field, current, input_fn=input_fn, getpass_fn=getpass_fn, detected=detected)
             if picked is None and field.required:
                 print(f"{field.name} is required.", file=sys.stderr)
                 continue
             if picked is not None:
                 chosen[field.name] = picked
+                if field.name == "ALLOWED_ORIGINS":
+                    detected["COOKIE_SECURE"] = _cookie_secure(picked)
             break
     return chosen
+
+
+def _cookie_secure(origins: str) -> str:
+    from detect import cookie_secure_for
+
+    return cookie_secure_for(origins)
 
 
 def configure_env(
@@ -200,10 +215,18 @@ def configure_env(
     input_fn=input,
     getpass_fn=getpass.getpass,
     write: bool = True,
+    detected: dict[str, str] | None = None,
 ) -> dict[str, str]:
+    from detect import format_summary, host_defaults
+
     existing = parse_env(path)
     extras = {key: value for key, value in existing.items() if key not in {field.name for field in FIELDS}}
-    chosen = prompt_env(existing, values=values, input_fn=input_fn, getpass_fn=getpass_fn)
+    detected = dict(host_defaults() if detected is None else detected)
+    if values is None and sys.stdin.isatty() and sys.stdout.isatty():
+        print(format_summary(detected), flush=True)
+    chosen = prompt_env(
+        existing, values=values, input_fn=input_fn, getpass_fn=getpass_fn, detected=detected
+    )
     missing = [field.name for field in FIELDS if field.required and not chosen.get(field.name)]
     if missing:
         raise ValueError("missing required settings: " + ", ".join(missing))
