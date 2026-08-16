@@ -104,6 +104,7 @@ def ensure_local_postgres() -> str:
     _write_pg_env(env_path, password, port)
     command = [
         *compose,
+        "--progress", "plain",
         "--project-name", PROJECT,
         "-f", str(compose_file),
         "--env-file", str(env_path),
@@ -111,7 +112,8 @@ def ensure_local_postgres() -> str:
     ]
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip()[:300] or "docker compose up failed"
+        detail = "\n".join(part for part in (result.stderr, result.stdout) if part).strip()
+        detail = detail[-800:] if detail else "docker compose up failed"
         raise RuntimeError(detail)
     wait_for_postgres(port)
     return database_url(password, port)

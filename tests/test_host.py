@@ -136,6 +136,27 @@ def test_doctor_prompts_for_cpu_only(monkeypatch, tmp_path):
     assert "opengpu:cpu" in text
 
 
+def test_setup_cpu_flag_writes_cpu_image(tmp_path, monkeypatch):
+    env = tmp_path / ".env"
+    monkeypatch.setattr("localdb.ensure_local_postgres", lambda: "postgresql://opengpu:x@127.0.0.1/opengpu")
+    monkeypatch.setattr("tunnel.configure_agent", lambda _token: None)
+    monkeypatch.setenv("CPU_ONLY", "false")
+    monkeypatch.setenv("DOCKER_IMAGE", "yashbhamare123/opengpu:ml")
+    values = {
+        "SERVER_IP": "127.0.0.1",
+        "DOCKER_BIND_IP": "127.0.0.1",
+        "WORKSPACE_ROOT": str(tmp_path / "ws"),
+        "ALLOWED_ORIGINS": "http://127.0.0.1:8000",
+        "COOKIE_SECURE": "false",
+        "ADMIN_EMAILS": "admin@example.edu",
+        "SMTP_HOST": "skip",
+    }
+    assert host.setup(cpu=True, skip_helper=True, skip_image=True, env_file=str(env), env_values=values) == 0
+    text = env.read_text()
+    assert "CPU_ONLY=true" in text
+    assert "opengpu:cpu" in text
+
+
 def test_doctor_cpu_flag_skips_prompt(monkeypatch, tmp_path):
     env = tmp_path / ".env"
     env.write_text("DATABASE_URL=postgresql://x\n")
