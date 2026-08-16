@@ -1,3 +1,4 @@
+import os
 import smtplib
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -5,10 +6,27 @@ from email.utils import format_datetime, formataddr, make_msgid, parseaddr
 from html import escape
 
 from config import settings
+from security import normalize_email
+
+
+def smtp_enabled() -> bool:
+    return bool(settings.smtp_host.strip() and settings.smtp_from.strip())
+
+
+def advertised_ssh(username: str, allocated_port: int) -> tuple[str, str, int]:
+    host = os.environ.get("OPENGPU_SSH_HOST", "").strip() or settings.server_ip
+    advertised_port = os.environ.get("OPENGPU_SSH_PORT", "").strip()
+    port = int(advertised_port) if advertised_port else allocated_port
+    command = f"ssh {username}@{host} -p {port}"
+    command_html = (
+        f"ssh <span>{escape(username)}</span><span>&#64;</span>"
+        f"<span>{escape(host)}</span> -p {port}"
+    )
+    return command, command_html, port
 
 
 def _deliver(message: EmailMessage) -> None:
-    if not settings.smtp_host:
+    if not smtp_enabled():
         raise RuntimeError("SMTP is not configured")
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
         smtp.starttls()
@@ -34,6 +52,40 @@ def send_email(recipient: str, subject: str, body: str) -> None:
     message = _message(recipient, subject)
     message.set_content(body)
     _deliver(message)
+
+
+def print_ssh_share(email: str, username: str, password: str, port: int) -> None:
+    command, _html, _port = advertised_ssh(username, port)
+    print(
+        f"\nSSH for {email}\n{command}\nPassword: {password}\nShare this once; it is not stored.\n",
+        flush=True,
+    )
+
+
+def print_admin_login_code(email: str, code: str) -> None:
+    print(f"\nAdmin login code for {email}: {code}\n", flush=True)
+
+
+def deliver_otp(email: str, code: str) -> None:
+    if smtp_enabled():
+        send_otp(email, code)
+        return
+    if normalize_email(email) in settings.admin_emails:
+        print_admin_login_code(email, code)
+
+
+def deliver_credentials(email: str, username: str, password: str, port: int,
+                        reservation_start: datetime | None = None,
+                        reservation_end: datetime | None = None) -> None:
+    if smtp_enabled():
+        send_credentials(email, username, password, port, reservation_start, reservation_end)
+        return
+    print_ssh_share(email, username, password, port)
+
+
+def deliver_cancellation(email: str, reservation_start: datetime, reservation_end: datetime) -> None:
+    if smtp_enabled():
+        send_cancellation(email, reservation_start, reservation_end)
 
 
 def send_otp(email: str, code: str) -> None:
@@ -66,12 +118,7 @@ def send_otp(email: str, code: str) -> None:
 def send_credentials(email: str, username: str, password: str, port: int,
                      reservation_start: datetime | None = None,
                      reservation_end: datetime | None = None) -> None:
-    command = f"ssh {username}@{settings.server_ip} -p {port}"
-    # Separate the address across elements so mail clients do not mistake it for an email link.
-    command_html = (
-        f"ssh <span>{escape(username)}</span><span>&#64;</span>"
-        f"<span>{escape(settings.server_ip)}</span> -p {port}"
-    )
+    command, command_html, _port = advertised_ssh(username, port)
     if reservation_start and reservation_end:
         start = reservation_start.astimezone()
         end = reservation_end.astimezone()

@@ -8,11 +8,10 @@ Create a virtual environment and install the control-plane dependencies:
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-cp .env.example .env
-chmod 600 .env
+opengpu setup --skip-helper --skip-image
 ```
 
-`requirements-ml.txt` belongs to the GPU image and is not required for routine API or scheduler tests.
+`opengpu setup` writes `.env`. Optional variables accept `skip`. Use `--skip-env` to keep an existing file. `requirements-ml.txt` belongs to the GPU image and is not required for routine API or scheduler tests.
 
 ## Source map
 
@@ -23,9 +22,11 @@ chmod 600 .env
 | Database connection and schema | `database.py`, `postgres/` |
 | Scheduler and desired state | `scheduler.py` |
 | Docker provisioning | `manager.py`, `entrypoint.sh` |
-| User image | `Dockerfile`, `requirements-ml.txt` |
+| User image | `Dockerfile`, `Dockerfile.cpu`, `requirements-ml.txt` |
 | Email | `mailer.py` |
-| Administration | `admin.py` |
+| Administration | `admin.py`, `python -m cli admin` |
+| Local CLI | `opengpu setup`, `opengpu migrate`, `opengpu doctor`, `opengpu serve` |
+| Asset paths | `paths.py` |
 | Local supervision | `start.sh` |
 | Production units | `deploy/` |
 | Tests | `tests/`, `scripts/run-tests.sh` |
@@ -35,11 +36,12 @@ chmod 600 .env
 The frontend is served by FastAPI from `/`; it has no Node build step. With a configured PostgreSQL database and `.env`:
 
 ```bash
-./start.sh --check
-./start.sh
+opengpu migrate
+opengpu doctor
+opengpu serve
 ```
 
-The combined script requires Docker because it starts the scheduler. For isolated API work, run Uvicorn directly and expect readiness to remain unavailable without a live scheduler heartbeat.
+`./start.sh --check` also runs `opengpu doctor` (via `python -m cli doctor`). `opengpu serve` runs the API, scheduler, and local SSH gateway together. Do not pass `--tunnel` unless you are testing remote SSH.
 
 ## Change boundaries
 
@@ -54,7 +56,7 @@ Run the tests described in [Testing](testing.md) before submitting a change. Add
 
 ## Debugging map
 
-- Login failure: inspect SMTP configuration and `auth_challenges`, without printing codes.
+- Login failure: inspect SMTP configuration and `auth_challenges`. Do not log codes. When SMTP is skipped, admin codes print only on the `opengpu serve` terminal.
 - Booking conflict: inspect active `reservations` and database constraint errors.
 - Provisioning failure: inspect `provisioning_jobs.last_error`, team state, scheduler heartbeat, and Docker labels.
 - Container did not start: compare the active reservation, `teams.container_name`, container status, and scheduler audit events.

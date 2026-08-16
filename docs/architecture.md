@@ -23,7 +23,7 @@ flowchart LR
 - PostgreSQL enforces reservation rules and coordinates concurrent API and scheduler workers.
 - The scheduler is the only application process that needs Docker access.
 - Docker runs one labelled GPU container for the active reservation.
-- SMTP delivers login codes and reservation-specific SSH credentials.
+- SMTP delivers login codes and reservation-specific SSH credentials when configured. Without SMTP, only administrators can book or sign in; SSH passwords and admin login codes print on the `opengpu serve` terminal.
 
 ## Authentication and booking
 
@@ -32,7 +32,7 @@ flowchart LR
 3. The browser loads `/me` and future reservations. Other users' reservation IDs are withheld.
 4. The first booking attempt for an unprovisioned user queues initial provisioning and returns `202`.
 5. After provisioning becomes `ready`, the user submits the booking again with an idempotency key.
-6. PostgreSQL inserts the reservation and queues reservation provisioning, which rotates the SSH password and emails the new credentials.
+6. PostgreSQL inserts the reservation and queues reservation provisioning, which rotates the SSH password and emails the new credentials, or prints them on the host when SMTP is skipped.
 
 ## Reservation lifecycle
 

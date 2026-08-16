@@ -1,6 +1,6 @@
 # Container Image
 
-The `opengpu:ml` image is built from `nvidia/cuda:12.8.0-devel-ubuntu22.04`. It provides an SSH-accessible CUDA development environment rather than the OpenGPU control plane.
+The `opengpu:ml` image (published as `yashbhamare123/opengpu:ml`) is built from `nvidia/cuda:12.8.0-devel-ubuntu22.04`. It provides an SSH-accessible CUDA development environment rather than the OpenGPU control plane.
 
 ## Image contents
 
@@ -25,12 +25,25 @@ The entrypoint:
 
 `/etc` is a bind-mounted copy of the image `/etc` on the scratch disk so the root filesystem can stay read-only. Host private keys are removed during image construction and generated only at runtime. The bundled profile script prints the terminal welcome banner for interactive SSH sessions.
 
-## Building and testing
+The published runtime image is `yashbhamare123/opengpu:ml`. Hosts pull that tag via `DOCKER_IMAGE` / `opengpu setup`. Building from this Dockerfile is for image development:
 
 ```bash
 docker build -t opengpu:ml .
+docker tag opengpu:ml yashbhamare123/opengpu:ml
+docker push yashbhamare123/opengpu:ml
 docker run --rm --entrypoint bash opengpu:ml -lc 'python --version && nvim --version | head -1 && tmux -V'
 ```
+
+## CPU image
+
+`Dockerfile.cpu` is a small Ubuntu 22.04 image with Python, OpenSSH, sudo, git, curl, and vim. It uses the same entrypoint as the GPU image so reservations still work over SSH. It does not include CUDA or PyTorch.
+
+```bash
+docker build -f Dockerfile.cpu -t opengpu:cpu -t yashbhamare123/opengpu:cpu .
+docker push yashbhamare123/opengpu:cpu
+```
+
+On a host without NVIDIA hardware, `opengpu doctor` prompts to enable CPU-only mode. That sets `CPU_ONLY=true`, switches `DOCKER_IMAGE` to `yashbhamare123/opengpu:cpu` (or a local `opengpu:cpu` tag), and omits GPU device requests. Non-interactive installs can pass `opengpu setup --cpu` or `opengpu doctor --cpu`.
 
 GPU validation requires a free compatible device:
 

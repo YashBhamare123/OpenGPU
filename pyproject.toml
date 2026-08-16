@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "opengpu"
+version = "0.0.0"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi==0.140.0",
+  "uvicorn==0.35.0",
+  "psycopg[binary]==3.3.4",
+  "docker==7.2.0",
+  "python-dotenv==1.1.1",
+  "pydantic[email]==2.10.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.4.1",
+  "httpx==0.28.1",
+]
+
+[project.scripts]
+opengpu = "cli:main"
+
+[tool.hatch.build.targets.wheel]
+only-include = [
+  "admin.py",
+  "api.py",
+  "cli.py",
+  "config.py",
+  "database.py",
+  "envfile.py",
+  "gateway.py",
+  "host.py",
+  "localdb.py",
+  "mailer.py",
+  "manager.py",
+  "migrate.py",
+  "paths.py",
+  "scheduler.py",
+  "security.py",
+  "tunnel.py",
+  "frontend",
+  "postgres",
+  "scripts/install-storage-helper",
+  "scripts/opengpu-storage-init",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120

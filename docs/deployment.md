@@ -4,10 +4,10 @@ This is a minimal deployment reference for contributors and small internal insta
 
 ## Prerequisites
 
-- Linux host with NVIDIA driver, Docker Engine, and NVIDIA Container Toolkit
+- Linux host with Docker Engine. NVIDIA driver and NVIDIA Container Toolkit are required for GPU reservations; `opengpu doctor` can switch the host to CPU-only mode instead.
 - PostgreSQL 15 or newer with permission to create `btree_gist` and `citext`
 - Python 3.10 or newer
-- SMTP relay with STARTTLS
+- SMTP relay with STARTTLS, or skip SMTP during setup to print login codes and SSH passwords on the host
 - Private network address for published SSH ports
 - HTTPS reverse proxy, or configured ngrok tunnel for development
 - Absolute `WORKSPACE_ROOT` with enough free space for sparse workspace and scratch images (loop mounts; XFS project quotas are not required)
@@ -18,40 +18,44 @@ This is a minimal deployment reference for contributors and small internal insta
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-cp .env.example .env
-chmod 600 .env
+opengpu setup
+opengpu migrate
+opengpu doctor
+opengpu serve
 ```
 
-Review every value in `.env`. Required settings are the database URL, advertised and bind addresses, SMTP sender/relay, allowed browser origins, secure-cookie policy, and the comma-separated `ADMIN_EMAILS` allowlist. `WORKSPACE_ROOT` must be an absolute path with room for per-user `workspace.img` and `scratch.img` files.
-
-Install the root-owned storage helper and its narrowly scoped sudo rule once, and reinstall it after helper changes:
-
-```bash
-sudo ./scripts/install-storage-helper
-```
+`opengpu setup` prompts for required settings and writes a mode-600 `.env`. Skip SMTP to run without email: only administrators can book, login codes for admins print on the host terminal, and SSH passwords print there for sharing. Compose starts Postgres and writes `DATABASE_URL` without printing the password.
 
 `scripts/configure-docker-storage-backend` is not required for these virtual-disk caps; it only forces Docker onto overlay2 and is optional. Reservations default to a 2 GB persistent workspace and 100 GB scratch disk for `/home`, `/tmp`, and a writable `/etc` copy; administrators can adjust both up to a combined 200 GB. The container root filesystem is read-only so users cannot fill the Docker overlay. The helper owns image creation and loop mounts; the scheduler account does not need general write access to `WORKSPACE_ROOT`.
 
 Do not run the first directory-to-image `prepare ... convert` while a reservation container still exists. After upgrade, reinstall the helper before starting the scheduler.
 
-For a fresh database, apply `postgres/init.sql`. Numbered migrations are for an existing schema and must be applied in order after a backup.
-
-Existing installations must apply pending migrations in numerical order, including:
+You can still apply SQL by hand:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f postgres/migrations/003_admin_duration_override.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f postgres/migrations/004_reservation_storage.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f postgres/migrations/005_configurable_duration_limit.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f postgres/init.sql
 ```
 
+## GPU image
+
+Hosts pull the published user image; they do not build it during setup:
+
+```bash
+docker pull yashbhamare123/opengpu:ml
+```
+
+`opengpu setup` and `opengpu doctor` do this using `DOCKER_IMAGE` (default `yashbhamare123/opengpu:ml`). Set `CPU_ONLY=true` or pass `--cpu` to pull `yashbhamare123/opengpu:cpu` instead. Set `DOCKER_IMAGE` if you use another tag.
+
 ## Build and validate
+
+Contributors changing the Dockerfile can still build locally:
 
 ```bash
 docker build -t opengpu:ml .
 ./start.sh --check
 ```
 
-The preflight verifies required configuration, database tables and columns, Docker access, image existence, passwordless access to the storage helper, and Python syntax.
+The preflight verifies required configuration, database tables and columns, Docker access, image existence, passwordless access to the storage helper, and Python syntax. `./start.sh --check` runs `python -m cli doctor` for the host checks, then confirms `DOCKER_IMAGE` is present.
 
 ## Run
 
@@ -65,7 +69,7 @@ For the configured development tunnel:
 ./start.sh --tunnel
 ```
 
-The supervisor runs the API and scheduler together and stops all children if one exits. Production deployments may install the separate units in `deploy/`; the API service account should not belong to the Docker group, while the scheduler account requires Docker access and passwordless access only to the installed storage helper.
+For remote SSH, set `NGROK_AUTHTOKEN` or `NGROK_TOKEN` and run `opengpu serve --tunnel`. `./start.sh --tunnel` still only publishes the web UI on `NGROK_DOMAIN`; include that hostname in `ALLOWED_ORIGINS`.
 
 Verify:
 
@@ -79,13 +83,13 @@ Adjust the address if `API_HOST` is not localhost.
 ## Administration
 
 ```bash
-python admin.py whitelist person@example.edu --display-name "Person"
-python admin.py list-users
-python admin.py disable person@example.edu
-python admin.py enable person@example.edu
-python admin.py cancel 42 --reason "admin request"
-python admin.py retry-provision person@example.edu
-python admin.py rotate-password person@example.edu
+python -m cli admin whitelist person@example.edu --display-name "Person"
+python -m cli admin list-users
+python -m cli admin disable person@example.edu
+python -m cli admin enable person@example.edu
+python -m cli admin cancel 42 --reason "admin request"
+python -m cli admin retry-provision person@example.edu
+python -m cli admin rotate-password person@example.edu
 ```
 
 Password rotation refuses to replace a running container. Disabling a user removes its container on the next reconciliation because disabled users are not retained.

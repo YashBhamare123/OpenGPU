@@ -1,0 +1,38 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssh-server \
+    sudo \
+    ca-certificates \
+    git \
+    curl \
+    vim \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python-is-python3 \
+    && rm -f /etc/ssh/ssh_host_* \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /run/sshd /etc/ssh/host_keys
+
+RUN printf '%s\n' \
+    'PasswordAuthentication yes' \
+    'PubkeyAuthentication no' \
+    'PermitRootLogin no' \
+    'HostKey /etc/ssh/host_keys/ssh_host_ed25519_key' \
+    'HostKey /etc/ssh/host_keys/ssh_host_ecdsa_key' \
+    'HostKey /etc/ssh/host_keys/ssh_host_rsa_key' \
+    >> /etc/ssh/sshd_config
+
+COPY entrypoint.sh /entrypoint.sh
+COPY scripts/cynaptics-banner.sh /etc/profile.d/cynaptics-banner.sh
+RUN chmod +x /entrypoint.sh /etc/profile.d/cynaptics-banner.sh
+
+EXPOSE 22
+
+ENTRYPOINT ["/entrypoint.sh"]

@@ -4,6 +4,26 @@ from datetime import datetime, timedelta, timezone
 import mailer
 
 
+def test_credentials_print_when_smtp_is_disabled(monkeypatch, capsys):
+    monkeypatch.setattr(mailer, "settings", replace(mailer.settings, smtp_host="", smtp_from="", server_ip="10.0.0.10"))
+    mailer.deliver_credentials("person@example.edu", "gpu1", "once-secret", 22001)
+    out = capsys.readouterr().out
+    assert "ssh gpu1@10.0.0.10 -p 22001" in out
+    assert "once-secret" in out
+
+
+def test_admin_otp_prints_when_smtp_is_disabled(monkeypatch, capsys):
+    monkeypatch.setattr(
+        mailer,
+        "settings",
+        replace(mailer.settings, smtp_host="", smtp_from="", admin_emails=("admin@example.edu",)),
+    )
+    mailer.deliver_otp("admin@example.edu", "654321")
+    assert "654321" in capsys.readouterr().out
+    mailer.deliver_otp("person@example.edu", "111111")
+    assert "111111" not in capsys.readouterr().out
+
+
 def test_otp_email_has_plain_and_professional_html_alternatives(monkeypatch):
     captured = []
     monkeypatch.setattr(mailer, "settings", replace(mailer.settings, otp_minutes=10,
@@ -53,3 +73,17 @@ def test_credentials_and_cancellation_share_transactional_headers_and_template(m
     cancellation = captured[1]
     assert "reservation cancelled" in cancellation["Subject"].lower()
     assert "has been cancelled" in cancellation.get_body(preferencelist=("plain",)).get_content()
+
+
+def test_credentials_use_tunnel_endpoint_when_set(monkeypatch):
+    captured = []
+    monkeypatch.setenv("OPENGPU_SSH_HOST", "6.tcp.ngrok.io")
+    monkeypatch.setenv("OPENGPU_SSH_PORT", "12345")
+    monkeypatch.setattr(mailer, "settings", replace(
+        mailer.settings, smtp_from="OpenGPU <opengpu@example.edu>", server_ip="10.0.0.10"
+    ))
+    monkeypatch.setattr(mailer, "_deliver", captured.append)
+    mailer.send_credentials("person@example.edu", "gpu1", "secret", 22001)
+    plain = captured[0].get_body(preferencelist=("plain",)).get_content()
+    assert "ssh gpu1@6.tcp.ngrok.io -p 12345" in plain
+    assert "22001" not in plain
