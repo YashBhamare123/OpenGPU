@@ -96,7 +96,17 @@ def test_retry_recreates_container_before_emailing_new_password(monkeypatch, tmp
         "__enter__": lambda self: self, "__exit__": lambda self, *args: None,
         "bind": lambda self, address: None,
     })())
-    monkeypatch.setattr(manager, "settings", replace(manager.settings, workspace_root=str(tmp_path)))
+    monkeypatch.setattr(
+        manager,
+        "settings",
+        replace(
+            manager.settings,
+            workspace_root=str(tmp_path),
+            memory_limit="32g",
+            cpu_limit=16,
+            shm_size="16g",
+        ),
+    )
     monkeypatch.setenv("CPU_ONLY", "false")
     events = []
     def prepare(_user_id, _workspace_gb=2, _temp_storage_gb=100, convert=False):

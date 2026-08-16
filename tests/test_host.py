@@ -30,6 +30,7 @@ def test_docker_missing_from_path(monkeypatch):
 
 
 def test_nvidia_requires_toolkit(monkeypatch):
+    monkeypatch.delenv("CPU_ONLY", raising=False)
     monkeypatch.setattr(
         host.shutil,
         "which",

@@ -34,7 +34,8 @@ def test_private_routes_require_authentication_before_external_access():
     assert error.value.status_code == 401
 
 
-def test_admin_access_is_restricted_to_configured_email():
+def test_admin_access_is_restricted_to_configured_email(monkeypatch):
+    monkeypatch.setattr(api, "settings", replace(api.settings, admin_emails=("mc240041040@iiti.ac.in",)))
     admin = {"email": "mc240041040@iiti.ac.in"}
     assert require_admin(admin) is admin
     with pytest.raises(HTTPException) as error:
