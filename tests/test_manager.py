@@ -57,9 +57,11 @@ def test_user_storage_paths_do_not_stat_root_owned_helper_output(monkeypatch, tm
 
 
 def _storage_paths(tmp_path):
+    host_keys = tmp_path / "users" / "1" / "ssh-host-keys"
+    host_keys.mkdir(parents=True, exist_ok=True)
     return (
         tmp_path / "users" / "1" / "workspace",
-        tmp_path / "users" / "1" / "ssh-host-keys",
+        host_keys,
         tmp_path / "users" / "1" / "scratch" / "home",
         tmp_path / "users" / "1" / "scratch" / "tmp",
         tmp_path / "users" / "1" / "scratch" / "etc",
@@ -77,7 +79,10 @@ def test_retry_recreates_container_before_emailing_new_password(monkeypatch, tmp
 
     existing = Existing()
     volume = type("Volume", (), {"attrs": {"Labels": existing.labels}})()
-    created = type("Created", (), {"remove": lambda self, force=False: None})()
+    created = type("Created", (), {
+        "remove": lambda self, force=False: None,
+        "put_archive": lambda self, path, data: captured.update({"archive": (path, data)}),
+    })()
     captured = {}
 
     class Containers:
@@ -137,11 +142,15 @@ def test_retry_recreates_container_before_emailing_new_password(monkeypatch, tmp
     assert captured["shm_size"] == "16g"
     assert captured["device_requests"]
     assert result == "$6$new-hash"
+    assert captured["archive"][0] == "/etc/ssh/host_keys"
 
 
 def test_cpu_only_omits_gpu_device_request(monkeypatch, tmp_path):
     captured = {}
-    created = type("Created", (), {"remove": lambda self, force=False: None})()
+    created = type("Created", (), {
+        "remove": lambda self, force=False: None,
+        "put_archive": lambda self, path, data: None,
+    })()
 
     class Containers:
         def create(self, **kwargs):
@@ -184,7 +193,7 @@ def test_managed_container_query_includes_stopped_containers(monkeypatch):
 
 def test_initial_provisioning_can_skip_credentials_email(monkeypatch, tmp_path):
     volume = type("Volume", (), {"attrs": {"Labels": {"app": manager.APP_LABEL, "aiml.user_id": "1"}}})()
-    created = type("Created", (), {})()
+    created = type("Created", (), {"put_archive": lambda self, path, data: None})()
     fake = type("Client", (), {
         "containers": type("Containers", (), {
             "get": lambda self, name: (_ for _ in ()).throw(manager.docker.errors.NotFound("missing")),
@@ -214,6 +223,8 @@ def test_start_container_prepares_storage_before_start(monkeypatch, tmp_path):
     class Container:
         def __init__(self):
             self.labels = {"app": manager.APP_LABEL, "aiml.user_id": "3"}
+        def put_archive(self, path, data):
+            events.append("keys")
         def start(self):
             events.append("start")
     fake = type("Client", (), {
@@ -228,7 +239,7 @@ def test_start_container_prepares_storage_before_start(monkeypatch, tmp_path):
 
     monkeypatch.setattr(manager.subprocess, "run", run_helper)
     manager.start_container("gpu-user-3", 3, workspace_gb=4, temp_storage_gb=50)
-    assert events == [("prepare", "3", "4", "50"), "seed", "start"]
+    assert events == [("prepare", "3", "4", "50"), "seed", "keys", "start"]
 
 
 def test_remove_container_tears_down_scratch_after_remove(monkeypatch):
@@ -291,6 +302,7 @@ def test_email_failure_releases_storage_through_remove_container(monkeypatch, tm
             self.status = "created"
             self.name = "gpu-user-1"
         def reload(self): pass
+        def put_archive(self, path, data): pass
         def remove(self, force=False): events.append("container")
 
     created = Created()
@@ -318,3 +330,62 @@ def test_email_failure_releases_storage_through_remove_container(monkeypatch, tm
     with pytest.raises(RuntimeError, match="smtp down"):
         manager.provision_user(1, "user@example.edu", "gpu1", 22001, "gpu-user-1", "gpu-workspace-1")
     assert events == ["container", ("release", "1")]
+
+
+def test_provision_and_start_install_ssh_public_key(monkeypatch, tmp_path):
+    import io
+    import tarfile
+
+    key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA laptop"
+    captured = {}
+    host_keys = tmp_path / "users" / "1" / "ssh-host-keys"
+
+    class Created:
+        labels = {"app": manager.APP_LABEL, "aiml.user_id": "1"}
+        started = False
+
+        def put_archive(self, path, data):
+            captured["archive"] = (path, data)
+
+        def start(self):
+            self.started = True
+
+        def remove(self, force=False):
+            pass
+
+    created = Created()
+    fake = type("Client", (), {
+        "containers": type("Containers", (), {
+            "get": lambda self, name: created if captured.get("created") else (_ for _ in ()).throw(manager.docker.errors.NotFound("missing")),
+            "create": lambda self, **kwargs: captured.__setitem__("created", True) or created,
+        })(),
+    })()
+    monkeypatch.setattr(manager, "get_client", lambda: fake)
+    monkeypatch.setattr(manager, "linux_password_hash", lambda password: "$6$hash")
+    monkeypatch.setattr(manager, "send_credentials", lambda *args: None)
+    monkeypatch.setattr(manager.socket, "socket", lambda *args: type("Probe", (), {
+        "__enter__": lambda self: self, "__exit__": lambda self, *args: None, "bind": lambda self, address: None,
+    })())
+    monkeypatch.setattr(manager, "settings", replace(manager.settings, workspace_root=str(tmp_path)))
+    monkeypatch.setattr(manager, "prepare_user_storage", lambda *_args, **_kwargs: _storage_paths(tmp_path))
+    monkeypatch.setattr(manager, "seed_scratch_etc", lambda _path: None)
+    monkeypatch.setattr(manager, "_get_owned_container", lambda *_args, **_kwargs: None if not captured.get("created") else created)
+
+    manager.provision_user(
+        1, "user@example.edu", "gpu1", 22001, "gpu-user-1", "gpu-workspace-1",
+        ssh_public_key=key,
+    )
+    with tarfile.open(fileobj=io.BytesIO(captured["archive"][1]), mode="r") as archive:
+        info = archive.getmember("authorized_keys")
+        payload = archive.extractfile(info).read()
+    assert captured["archive"][0] == "/etc/ssh/host_keys"
+    assert info.mode & 0o777 == 0o644
+    assert payload == (key + "\n").encode()
+    assert (host_keys / "authorized_keys").read_text() == key + "\n"
+
+    captured.pop("archive", None)
+    captured["created"] = True
+    manager.start_container("gpu-user-1", 1, ssh_public_key=key)
+    assert created.started
+    with tarfile.open(fileobj=io.BytesIO(captured["archive"][1]), mode="r") as archive:
+        assert archive.extractfile("authorized_keys").read() == (key + "\n").encode()

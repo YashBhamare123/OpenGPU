@@ -45,7 +45,7 @@ def claim_job():
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT j.id,j.team_id,t.email,j.purpose,
+                SELECT j.id,j.team_id,t.email,j.purpose,t.ssh_public_key,
                   (SELECT r.start_time FROM reservations r
                    WHERE r.team_id=j.team_id AND NOT r.cancelled AND r.end_time>NOW()
                    ORDER BY r.start_time LIMIT 1),
@@ -76,8 +76,9 @@ def claim_job():
         return {"job_id": job[0], "user_id": job[1], "email": str(job[2]), "port": port,
                 "username": username, "container_name": container_name, "volume_name": volume_name,
                 "legacy_volume": legacy_volume, "purpose": job[3],
-                "reservation_start": job[4], "reservation_end": job[5],
-                "workspace_gb": job[6] or 2, "temp_storage_gb": job[7] or 100}
+                "ssh_public_key": job[4],
+                "reservation_start": job[5], "reservation_end": job[6],
+                "workspace_gb": job[7] or 2, "temp_storage_gb": job[8] or 100}
     finally:
         conn.close()
 
@@ -93,6 +94,7 @@ def process_one_job():
             email_credentials=job["purpose"] != "initial",
             reservation_start=job["reservation_start"], reservation_end=job["reservation_end"],
             workspace_gb=job["workspace_gb"], temp_storage_gb=job["temp_storage_gb"],
+            ssh_public_key=job["ssh_public_key"],
         )
         conn = get_connection()
         try:
@@ -180,6 +182,17 @@ def retained_container_names():
         conn.close()
 
 
+def user_ssh_public_key(user_id: int) -> str | None:
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT ssh_public_key FROM teams WHERE id=%s", (user_id,))
+            row = cursor.fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
 def record_transition(event_type, team_id, container_name):
     conn = get_connection()
     try:
@@ -210,6 +223,7 @@ def reconcile():
         start_container(
             desired_name, desired[0],
             workspace_gb=desired[2] or 2, temp_storage_gb=desired[3] or 100,
+            ssh_public_key=user_ssh_public_key(desired[0]),
         )
         record_transition("container_started", desired[0], desired_name)
 

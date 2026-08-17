@@ -20,9 +20,10 @@ def test_reconcile_stops_old_before_starting_new(monkeypatch):
     monkeypatch.setattr(scheduler, "retained_container_names", lambda: {"gpu-user-1", "gpu-user-2"})
     monkeypatch.setattr(scheduler, "managed_containers", lambda: [old])
     monkeypatch.setattr(old, "stop", lambda timeout=15: events.append(("stop", old.name)))
+    monkeypatch.setattr(scheduler, "user_ssh_public_key", lambda _uid: None)
     monkeypatch.setattr(
         scheduler, "start_container",
-        lambda n, i, workspace_gb=2, temp_storage_gb=100: events.append(("start", n, i, workspace_gb, temp_storage_gb)),
+        lambda n, i, workspace_gb=2, temp_storage_gb=100, ssh_public_key=None: events.append(("start", n, i, workspace_gb, temp_storage_gb)),
     )
     monkeypatch.setattr(scheduler, "record_transition", lambda *args: None)
     monkeypatch.setattr(scheduler, "unretained_user_ids", list)
@@ -35,9 +36,10 @@ def test_reconcile_start_remounts_with_reservation_storage(monkeypatch):
     monkeypatch.setattr(scheduler, "desired_container", lambda: (2, "gpu-user-2", 5, 40))
     monkeypatch.setattr(scheduler, "retained_container_names", lambda: {"gpu-user-2"})
     monkeypatch.setattr(scheduler, "managed_containers", list)
+    monkeypatch.setattr(scheduler, "user_ssh_public_key", lambda _uid: None)
     monkeypatch.setattr(
         scheduler, "start_container",
-        lambda n, i, workspace_gb=2, temp_storage_gb=100: events.append((n, i, workspace_gb, temp_storage_gb)),
+        lambda n, i, workspace_gb=2, temp_storage_gb=100, ssh_public_key=None: events.append((n, i, workspace_gb, temp_storage_gb)),
     )
     monkeypatch.setattr(scheduler, "record_transition", lambda *args: None)
     monkeypatch.setattr(scheduler, "unretained_user_ids", list)
@@ -102,3 +104,19 @@ def test_reconcile_retries_scratch_teardown_for_unretained_users(monkeypatch):
     monkeypatch.setattr(scheduler, "record_transition", lambda *args: None)
     scheduler.reconcile()
     assert events == [4, 7]
+
+
+def test_reconcile_refreshes_authorized_keys_before_start(monkeypatch):
+    events = []
+    monkeypatch.setattr(scheduler, "desired_container", lambda: (2, "gpu-user-2", 2, 100))
+    monkeypatch.setattr(scheduler, "retained_container_names", lambda: {"gpu-user-2"})
+    monkeypatch.setattr(scheduler, "managed_containers", list)
+    monkeypatch.setattr(scheduler, "user_ssh_public_key", lambda uid: "ssh-ed25519 AAAA test" if uid == 2 else None)
+    monkeypatch.setattr(
+        scheduler, "start_container",
+        lambda n, i, workspace_gb=2, temp_storage_gb=100, ssh_public_key=None: events.append((n, i, ssh_public_key)),
+    )
+    monkeypatch.setattr(scheduler, "record_transition", lambda *args: None)
+    monkeypatch.setattr(scheduler, "unretained_user_ids", list)
+    scheduler.reconcile()
+    assert events == [("gpu-user-2", 2, "ssh-ed25519 AAAA test")]

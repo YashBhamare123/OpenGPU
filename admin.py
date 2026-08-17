@@ -1,11 +1,17 @@
 import argparse
 import json
+from pathlib import Path
 
 import docker
 
 from database import get_connection
 from manager import APP_LABEL, get_client
-from security import normalize_email
+from security import (
+    InvalidSshPublicKey,
+    normalize_email,
+    parse_ssh_public_key,
+    ssh_key_public_view,
+)
 
 
 def record(cursor, event, user_id=None, details=None):
@@ -131,6 +137,76 @@ def rotate(args):
         conn.close()
 
 
+def _load_public_key(args) -> str:
+    if args.file:
+        return Path(args.file).read_text()
+    if args.public_key:
+        return args.public_key
+    raise SystemExit("Provide a public key string or --file")
+
+
+def set_ssh_key(args):
+    try:
+        canonical = parse_ssh_public_key(_load_public_key(args))
+    except InvalidSshPublicKey as exc:
+        raise SystemExit(str(exc)) from exc
+    except OSError as exc:
+        raise SystemExit(f"Unable to read key file: {exc}") from exc
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "UPDATE teams SET ssh_public_key=%s WHERE email=%s RETURNING id",
+                (canonical, normalize_email(args.email)),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise SystemExit("User not found")
+            view = ssh_key_public_view(canonical)
+            record(cursor, "ssh_key_set", row[0], {"fingerprint": view["fingerprint"]})
+        conn.commit()
+        print(view["fingerprint"], view["comment"] or "", sep="\t")
+    finally:
+        conn.close()
+
+
+def show_ssh_key(args):
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT ssh_public_key FROM teams WHERE email=%s",
+                (normalize_email(args.email),),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise SystemExit("User not found")
+        view = ssh_key_public_view(row[0])
+        if not view:
+            print("none")
+            return
+        print(view["fingerprint"], view["comment"] or "", sep="\t")
+    finally:
+        conn.close()
+
+
+def clear_ssh_key(args):
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "UPDATE teams SET ssh_public_key=NULL WHERE email=%s RETURNING id",
+                (normalize_email(args.email),),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise SystemExit("User not found")
+            record(cursor, "ssh_key_cleared", row[0])
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def parser():
     root = argparse.ArgumentParser(description="OpenGPU administration")
     commands = root.add_subparsers(required=True)
@@ -141,6 +217,9 @@ def parser():
     p = commands.add_parser("cancel"); p.add_argument("reservation_id", type=int); p.add_argument("--reason", default="cancelled by admin"); p.set_defaults(func=cancel)
     p = commands.add_parser("retry-provision"); p.add_argument("email"); p.set_defaults(func=retry)
     p = commands.add_parser("rotate-password"); p.add_argument("email"); p.add_argument("--legacy", action="store_true"); p.set_defaults(func=rotate)
+    p = commands.add_parser("set-ssh-key"); p.add_argument("email"); p.add_argument("public_key", nargs="?"); p.add_argument("--file"); p.set_defaults(func=set_ssh_key)
+    p = commands.add_parser("show-ssh-key"); p.add_argument("email"); p.set_defaults(func=show_ssh_key)
+    p = commands.add_parser("clear-ssh-key"); p.add_argument("email"); p.set_defaults(func=clear_ssh_key)
     return root
 
 

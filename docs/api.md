@@ -28,7 +28,21 @@ Revokes the current session when present, deletes the cookie, and returns `204`.
 
 ### `GET /me`
 
-Returns the authenticated user's ID, email, generated SSH username, display name, provisioning state, `is_admin`, and `self_booking` (false when SMTP is skipped). Returns `401` without a valid enabled session.
+Returns the authenticated user's ID, email, generated SSH username, display name, provisioning state, `ssh_key` (`fingerprint` and `comment`, or `null`), `is_admin`, and `self_booking` (false when SMTP is skipped). Returns `401` without a valid enabled session.
+
+### `PUT /me/ssh-key`
+
+Replace the authenticated user's SSH public key.
+
+```json
+{"public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... laptop"}
+```
+
+Returns `{fingerprint, comment}`. Invalid key material returns `400`. The registered key is injected into the next provisioned reservation container; a key set after booking is refreshed when that container starts. Password SSH remains available.
+
+### `DELETE /me/ssh-key`
+
+Clears the registered public key and returns `204`. Later containers use password authentication only.
 
 ### `GET /reservations`
 
@@ -75,8 +89,9 @@ Cancels the authenticated user's active or future reservation and returns `204`.
 Admin endpoints require a valid session whose normalized email is listed in `ADMIN_EMAILS`.
 
 - `GET /admin` serves the administration page.
-- `GET /admin/users` lists users and their enabled state; the booking UI offers enabled users.
+- `GET /admin/users` lists users, their enabled state, and SSH key fingerprint when present; the booking UI offers enabled users.
 - `POST /admin/users` allowlists a new email and optional display name, or safely re-enables a disabled account. Already-enabled emails return `409`.
+- `PUT /admin/users/{id}/ssh-key` and `DELETE /admin/users/{id}/ssh-key` replace or clear another user's public key. Missing users return `404`.
 - `GET /admin/reservations` lists current and future reservations with owner details and full IDs.
 - `POST /admin/reservations` books for the `email` supplied in the request. Its `allow_extended` flag must be `true` above `RESERVATION_LIMIT_MINUTES`; the admin frontend calculates this flag from the configured limit without exposing a toggle.
 - `DELETE /admin/reservations/{id}` cancels any current or future reservation.

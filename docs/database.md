@@ -18,6 +18,7 @@ erDiagram
       text provisioning_state
       text container_name UK
       int ssh_port UK
+      text ssh_public_key
     }
     RESERVATIONS {
       bigint id PK
@@ -33,7 +34,7 @@ erDiagram
 
 ## Tables
 
-- `teams`: one approved person, generated Docker/SSH identifiers, enabled state, provisioning state, and last error.
+- `teams`: one approved person, generated Docker/SSH identifiers, optional SSH public key, enabled state, provisioning state, and last error.
 - `reservations`: time range, cancellation metadata, and per-user idempotency key.
 - `auth_challenges`: hashed OTP, expiry, attempt count, and consumption time.
 - `sessions`: hashed session token, expiry, and revocation time.

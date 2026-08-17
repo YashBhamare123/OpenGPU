@@ -28,6 +28,8 @@ scratch.img      loop-mounted at scratch/
 ssh-host-keys/   -> /etc/ssh/host_keys
 ```
 
+`ssh-host-keys/authorized_keys` is written from `teams.ssh_public_key` at provision time and refreshed immediately before the container starts. `sshd` is started with `PubkeyAuthentication=yes` and `AuthorizedKeysFile=/etc/ssh/host_keys/authorized_keys` so a seeded scratch `/etc` cannot keep pubkey login disabled. Password authentication remains enabled.
+
 Before Docker provisioning, the scheduler invokes the narrowly scoped root helper configured by `STORAGE_HELPER`. The helper creates sparse ext4 images, loop-mounts them on the host, and Docker only bind-mounts the resulting directories. Workspace images grow in place and are never shrunk. Scratch disks are sized to the reservation and removed when the user has no current or future booking; the helper also unmounts idle workspace images so loop devices are released. Persistent `/workspace` data remains in `workspace.img`.
 
 User containers use a read-only root filesystem plus `/run` tmpfs. Writable paths are the bind-mounted workspace, home, tmp, a scratch copy of `/etc`, and SSH host keys. That replaces overlay `storage_opt` size caps, which required XFS project quotas.

@@ -31,7 +31,11 @@ fi
 
 # Host keys live in a dedicated root-owned host directory so they are unique per user
 # and remain stable when the application recreates the container.
-install -d -m 700 -o root -g root /etc/ssh/host_keys
+# sshd temporarily drops to the login user before reading authorized_keys, so
+# the directory must be traversable and the file world-readable. Host private
+# keys stay mode 600.
+install -d -m 755 -o root -g root /etc/ssh/host_keys
+chmod 0755 /etc/ssh/host_keys
 if [[ ! -s /etc/ssh/host_keys/ssh_host_ed25519_key ]]; then
     ssh-keygen -q -t ed25519 -N '' -f /etc/ssh/host_keys/ssh_host_ed25519_key
 fi
@@ -43,8 +47,22 @@ if [[ ! -s /etc/ssh/host_keys/ssh_host_rsa_key ]]; then
 fi
 chmod 600 /etc/ssh/host_keys/ssh_host_*_key
 chmod 644 /etc/ssh/host_keys/ssh_host_*_key.pub
+touch /etc/ssh/host_keys/authorized_keys
+chmod 644 /etc/ssh/host_keys/authorized_keys
+
+# scratch /etc may still contain PubkeyAuthentication no from an older image copy.
+# sshd uses the first obtained value, so a drop-in included at the top of
+# sshd_config must enable pubkey auth before that later "no".
+install -d -m 0755 /etc/ssh/sshd_config.d
+printf '%s\n' \
+    'PubkeyAuthentication yes' \
+    'AuthorizedKeysFile /etc/ssh/host_keys/authorized_keys' \
+    > /etc/ssh/sshd_config.d/99-opengpu-keys.conf
+chmod 0644 /etc/ssh/sshd_config.d/99-opengpu-keys.conf
 
 # read_only + tmpfs /run hides the image's privilege-separation directory.
 install -d -m 0755 -o root -g root /run/sshd
 
-exec /usr/sbin/sshd -D -e
+exec /usr/sbin/sshd -D -e \
+    -o PubkeyAuthentication=yes \
+    -o AuthorizedKeysFile=/etc/ssh/host_keys/authorized_keys

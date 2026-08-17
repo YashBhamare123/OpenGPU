@@ -1,0 +1,5 @@
+BEGIN;
+
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS ssh_public_key TEXT;
+
+COMMIT;

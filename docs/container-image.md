@@ -21,7 +21,9 @@ The entrypoint:
 3. Grants passwordless sudo and suppresses the Ubuntu MOTD.
 4. Assigns `/workspace` to the user and ensures `/tmp` is mode `1777`.
 5. Creates missing Ed25519, ECDSA, and RSA host keys in `/etc/ssh/host_keys`.
-6. Starts `sshd` in the foreground.
+6. Starts `sshd` in the foreground with public-key authentication against `/etc/ssh/host_keys/authorized_keys` (command-line overrides beat a stale scratch `sshd_config`).
+
+`sshd` still accepts password authentication. An empty authorized_keys file leaves password-only access. The file is root-owned mode `644` on the host-key bind mount (`ssh-host-keys/` is `755`) so `sshd` can read it after dropping to the login user. Host private keys remain mode `600`.
 
 `/etc` is a bind-mounted copy of the image `/etc` on the scratch disk so the root filesystem can stay read-only. Host private keys are removed during image construction and generated only at runtime. The bundled profile script prints the terminal welcome banner for interactive SSH sessions.
 
