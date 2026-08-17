@@ -147,7 +147,7 @@ api_port="$(OPENGPU_ENV_FILE="$ENV_FILE" python3 - <<'PY'
 import os
 from dotenv import load_dotenv
 load_dotenv(os.environ["OPENGPU_ENV_FILE"])
-print(os.environ.get("API_PORT", "8000"))
+print(os.environ.get("API_PORT", "9473"))
 PY
 )"
 

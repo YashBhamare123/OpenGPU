@@ -69,7 +69,7 @@ def main(argv: list[str] | None = None) -> None:
 
     serve = commands.add_parser("serve", help="Run the API, scheduler, and local SSH gateway")
     serve.add_argument("--host", default=os.environ.get("API_HOST", "127.0.0.1"))
-    serve.add_argument("--port", type=int, default=int(os.environ.get("API_PORT", "8000")))
+    serve.add_argument("--port", type=int, default=int(os.environ.get("API_PORT", "9473")))
     serve.add_argument("--tunnel", action="store_true", help="Start a remote SSH tunnel (optional; requires a token)")
     serve.add_argument("--no-tunnel", action="store_true", help=argparse.SUPPRESS)
     serve.set_defaults(func=_serve)

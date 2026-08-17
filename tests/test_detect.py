@@ -57,7 +57,9 @@ def test_host_defaults_cpu_only_without_nvidia(monkeypatch):
     assert values["CONTAINER_MEMORY"] == "6g"
     assert values["SERVER_IP"] == "10.0.0.5"
     assert values["COOKIE_SECURE"] == "false"
-    assert "http://127.0.0.1:8000" in values["ALLOWED_ORIGINS"]
-    assert "http://10.0.0.5:8000" in values["ALLOWED_ORIGINS"]
+    assert values["API_PORT"] == "9473"
+    assert values["SSH_PUBLIC_PORT"] == "9474"
+    assert "http://127.0.0.1:9473" in values["ALLOWED_ORIGINS"]
+    assert "http://10.0.0.5:9473" in values["ALLOWED_ORIGINS"]
     assert detect.format_summary(values).startswith("Detected host defaults")
     assert Path("/var/tmp/ws").as_posix() == values["WORKSPACE_ROOT"]

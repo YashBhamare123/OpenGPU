@@ -74,11 +74,11 @@ For remote SSH, set `NGROK_AUTHTOKEN` or `NGROK_TOKEN` and run `opengpu serve --
 Verify:
 
 ```bash
-curl -fsS http://127.0.0.1:8000/health/live
-curl -fsS http://127.0.0.1:8000/health/ready
+curl -fsS http://127.0.0.1:9473/health/live
+curl -fsS http://127.0.0.1:9473/health/ready
 ```
 
-Adjust the address if `API_HOST` is not localhost.
+Adjust the address if `API_HOST` is not localhost. The default API port is `9473` and the SSH gateway is `9474`; setup picks the next free port if either is taken.
 
 ## Administration
 

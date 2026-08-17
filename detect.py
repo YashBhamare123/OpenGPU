@@ -8,6 +8,10 @@ from pathlib import Path
 
 from config import CPU_IMAGE, GPU_IMAGE
 
+# Unprivileged ports that common web/SSH stacks do not occupy (8000, 8080, 2222, 3000).
+API_PORT = 9473
+SSH_GATEWAY_PORT = 9474
+
 SUMMARY_KEYS = (
     "CPU_ONLY",
     "DOCKER_IMAGE",
@@ -122,8 +126,8 @@ def allowed_origins(api_port: int) -> str:
 def host_defaults() -> dict[str, str]:
     cpus = container_cpus()
     memory = container_memory_gb()
-    api_port = free_tcp_port(8000)
-    ssh_port = free_tcp_port(2222)
+    api_port = free_tcp_port(API_PORT)
+    ssh_port = free_tcp_port(SSH_GATEWAY_PORT)
     cpu_only = not nvidia_available()
     origins = allowed_origins(api_port)
     address = routable_ipv4()
