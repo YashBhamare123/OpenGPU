@@ -41,7 +41,7 @@ class FakeConn:
         return None
 
 
-CURRENT_TEAMS = {"ssh_password_hash", "ssh_public_key", "provisioning_state", "volume_name"}
+CURRENT_TEAMS = {"ssh_password_hash", "ssh_public_key", "handle", "provisioning_state", "volume_name"}
 CURRENT_RESERVATIONS = {"duration_override", "workspace_gb", "temp_storage_gb"}
 
 
@@ -54,6 +54,7 @@ def test_upgrade_migrations_skip_down_files():
         "004_reservation_storage.sql",
         "005_configurable_duration_limit.sql",
         "006_user_ssh_public_key.sql",
+        "007_handles_and_claims.sql",
     ]
     assert all(not name.endswith("_down.sql") for name in names)
 

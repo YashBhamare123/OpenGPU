@@ -7,7 +7,7 @@ This is a minimal deployment reference for contributors and small internal insta
 - Linux host with Docker Engine. NVIDIA driver and NVIDIA Container Toolkit are required for GPU reservations; `opengpu doctor` can switch the host to CPU-only mode instead.
 - PostgreSQL 15 or newer with permission to create `btree_gist` and `citext`
 - Python 3.10 or newer
-- SMTP relay with STARTTLS, or skip SMTP during setup to print login codes and SSH passwords on the host
+- SMTP relay with STARTTLS for Lab mode, or Tailscale for Personal mode
 - Private network address for published SSH ports
 - HTTPS reverse proxy, or configured ngrok tunnel for development
 - Absolute `WORKSPACE_ROOT` with enough free space for sparse workspace and scratch images (loop mounts; XFS project quotas are not required)
@@ -24,7 +24,7 @@ opengpu doctor
 opengpu serve
 ```
 
-`opengpu setup` writes a mode-600 `.env`. It asks for admin emails, optional SMTP, and a public contact address. Host CPU, memory, NVIDIA, ports, bind addresses, and browser origins are detected automatically. Skip SMTP to run without email: only administrators can book, login codes for admins print on the host terminal, and SSH passwords print there for sharing. Compose starts Postgres and writes `DATABASE_URL` without printing the password.
+`opengpu setup` writes a mode-600 `.env`. It asks for Lab vs Personal mode, then Lab identity/SMTP or Personal Tailscale Funnel. Host CPU, memory, NVIDIA, ports, bind addresses, and browser origins are detected automatically.
 
 `scripts/configure-docker-storage-backend` is not required for these virtual-disk caps; it only forces Docker onto overlay2 and is optional. Reservations default to a 2 GB persistent workspace and 100 GB scratch disk for `/home`, `/tmp`, and a writable `/etc` copy; administrators can adjust both up to a combined 200 GB. The container root filesystem is read-only so users cannot fill the Docker overlay. The helper owns image creation and loop mounts; the scheduler account does not need general write access to `WORKSPACE_ROOT`.
 

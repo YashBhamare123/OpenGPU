@@ -2,10 +2,7 @@ import argparse
 import json
 from pathlib import Path
 
-import docker
-
 from database import get_connection
-from manager import APP_LABEL, get_client
 from security import (
     InvalidSshPublicKey,
     normalize_email,
@@ -28,9 +25,9 @@ def whitelist(args):
             cursor.execute("SELECT nextval(pg_get_serial_sequence('teams','id'))")
             user_id = cursor.fetchone()[0]
             cursor.execute(
-                """INSERT INTO teams(id,name,email,display_name,enabled,provisioning_state)
-                   VALUES (%s,%s,%s,%s,TRUE,'unprovisioned')""",
-                (user_id, f"gpu{user_id}", normalize_email(args.email), args.display_name),
+                """INSERT INTO teams(id,name,email,handle,display_name,enabled,provisioning_state)
+                   VALUES (%s,%s,%s,%s,%s,TRUE,'unprovisioned')""",
+                (user_id, f"gpu{user_id}", normalize_email(args.email), f"gpu{user_id}", args.display_name),
             )
             record(cursor, "whitelist", user_id)
         conn.commit()
@@ -39,16 +36,22 @@ def whitelist(args):
         conn.close()
 
 
+def _identity(value: str) -> tuple[str, str]:
+    raw = value.strip()
+    return normalize_email(raw) if "@" in raw else raw.casefold(), raw.casefold()
+
+
 def set_enabled(args, enabled):
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
+            email, handle = _identity(args.email)
             cursor.execute(
                 """UPDATE teams SET enabled=%s,provisioning_state=CASE
                    WHEN %s=FALSE THEN 'disabled'
                    WHEN container_name IS NULL THEN 'unprovisioned' ELSE 'ready' END
-                   WHERE email=%s RETURNING id""",
-                (enabled, enabled, normalize_email(args.email)),
+                   WHERE email=%s OR handle=%s RETURNING id""",
+                (enabled, enabled, email, handle),
             )
             row = cursor.fetchone()
             if not row:
@@ -63,7 +66,7 @@ def list_users(_args):
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT id,email,name,enabled,provisioning_state,ssh_port FROM teams ORDER BY id")
+            cursor.execute("SELECT id,email,name,enabled,provisioning_state,ssh_port,handle FROM teams ORDER BY id")
             for row in cursor:
                 print(*row, sep="\t")
     finally:
@@ -92,7 +95,11 @@ def retry(args):
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT id FROM teams WHERE email=%s AND enabled", (normalize_email(args.email),))
+            email, handle = _identity(args.email)
+            cursor.execute(
+                "SELECT id FROM teams WHERE (email=%s OR handle=%s) AND enabled",
+                (email, handle),
+            )
             row = cursor.fetchone()
             if not row:
                 raise SystemExit("Enabled user not found")
@@ -109,32 +116,7 @@ def retry(args):
 
 
 def rotate(args):
-    conn = get_connection()
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT id,container_name,volume_name FROM teams WHERE email=%s", (normalize_email(args.email),))
-            row = cursor.fetchone()
-            if not row:
-                raise SystemExit("User not found")
-        if row[1]:
-            try:
-                container = get_client().containers.get(row[1])
-                if container.labels.get("app") != APP_LABEL:
-                    mounts = {mount.get("Name") for mount in container.attrs.get("Mounts", [])}
-                    if not args.legacy or row[2] not in mounts:
-                        raise SystemExit(
-                            "Refusing to replace an unmanaged container; "
-                            "use --legacy only for a verified migrated user"
-                        )
-                if container.status == "running":
-                    raise SystemExit("End/cancel the active reservation before rotating the password")
-                container.remove()
-            except docker.errors.NotFound:
-                pass
-        args.email = normalize_email(args.email)
-        retry(args)
-    finally:
-        conn.close()
+    raise SystemExit("SSH passwords are no longer used. Set a public key with: opengpu admin set-ssh-key")
 
 
 def _load_public_key(args) -> str:
@@ -155,9 +137,10 @@ def set_ssh_key(args):
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
+            email, handle = _identity(args.email)
             cursor.execute(
-                "UPDATE teams SET ssh_public_key=%s WHERE email=%s RETURNING id",
-                (canonical, normalize_email(args.email)),
+                "UPDATE teams SET ssh_public_key=%s WHERE email=%s OR handle=%s RETURNING id",
+                (canonical, email, handle),
             )
             row = cursor.fetchone()
             if not row:
@@ -174,9 +157,10 @@ def show_ssh_key(args):
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
+            email, handle = _identity(args.email)
             cursor.execute(
-                "SELECT ssh_public_key FROM teams WHERE email=%s",
-                (normalize_email(args.email),),
+                "SELECT ssh_public_key FROM teams WHERE email=%s OR handle=%s",
+                (email, handle),
             )
             row = cursor.fetchone()
             if not row:
@@ -194,9 +178,10 @@ def clear_ssh_key(args):
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
+            email, handle = _identity(args.email)
             cursor.execute(
-                "UPDATE teams SET ssh_public_key=NULL WHERE email=%s RETURNING id",
-                (normalize_email(args.email),),
+                "UPDATE teams SET ssh_public_key=NULL WHERE email=%s OR handle=%s RETURNING id",
+                (email, handle),
             )
             row = cursor.fetchone()
             if not row:
@@ -216,7 +201,6 @@ def parser():
     p = commands.add_parser("list-users"); p.set_defaults(func=list_users)
     p = commands.add_parser("cancel"); p.add_argument("reservation_id", type=int); p.add_argument("--reason", default="cancelled by admin"); p.set_defaults(func=cancel)
     p = commands.add_parser("retry-provision"); p.add_argument("email"); p.set_defaults(func=retry)
-    p = commands.add_parser("rotate-password"); p.add_argument("email"); p.add_argument("--legacy", action="store_true"); p.set_defaults(func=rotate)
     p = commands.add_parser("set-ssh-key"); p.add_argument("email"); p.add_argument("public_key", nargs="?"); p.add_argument("--file"); p.set_defaults(func=set_ssh_key)
     p = commands.add_parser("show-ssh-key"); p.add_argument("email"); p.set_defaults(func=show_ssh_key)
     p = commands.add_parser("clear-ssh-key"); p.add_argument("email"); p.set_defaults(func=clear_ssh_key)

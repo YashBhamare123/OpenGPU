@@ -68,7 +68,7 @@ def _storage_paths(tmp_path):
     )
 
 
-def test_retry_recreates_container_before_emailing_new_password(monkeypatch, tmp_path):
+def test_retry_recreates_container_before_installing_keys(monkeypatch, tmp_path):
     class Existing:
         def __init__(self):
             self.labels = {"app": manager.APP_LABEL, "aiml.user_id": "1"}
@@ -94,9 +94,6 @@ def test_retry_recreates_container_before_emailing_new_password(monkeypatch, tmp
         "volumes": type("Volumes", (), {"get": lambda self, _name: volume})(),
     })()
     monkeypatch.setattr(manager, "get_client", lambda: fake)
-    monkeypatch.setattr(manager, "random_password", lambda: "new-password")
-    monkeypatch.setattr(manager, "linux_password_hash", lambda _password: "$6$new-hash")
-    monkeypatch.setattr(manager, "send_credentials", lambda *args: None)
     monkeypatch.setattr(manager.socket, "socket", lambda *args: type("Probe", (), {
         "__enter__": lambda self: self, "__exit__": lambda self, *args: None,
         "bind": lambda self, address: None,
@@ -125,7 +122,8 @@ def test_retry_recreates_container_before_emailing_new_password(monkeypatch, tmp
     result = manager.provision_user(1, "user@example.edu", "gpu1", 0, "gpu-user-1", "gpu-workspace-1")
     assert events == ["prepare", "seed"]
     assert existing.removed
-    assert captured["environment"]["TEAM_PASSWORD_HASH"] == "$6$new-hash"
+    assert "TEAM_PASSWORD_HASH" not in captured["environment"]
+    assert captured["environment"]["TEAM_NAME"] == "gpu1"
     assert captured["environment"]["WORKSPACE_GB"] == "2"
     assert captured["environment"]["TEMP_STORAGE_GB"] == "100"
     assert captured["volumes"][str(tmp_path / "users" / "1" / "workspace")]["bind"] == "/workspace"
@@ -141,7 +139,7 @@ def test_retry_recreates_container_before_emailing_new_password(monkeypatch, tmp
     assert captured["pids_limit"] == 4096
     assert captured["shm_size"] == "16g"
     assert captured["device_requests"]
-    assert result == "$6$new-hash"
+    assert result is None
     assert captured["archive"][0] == "/etc/ssh/host_keys"
 
 
@@ -161,9 +159,6 @@ def test_cpu_only_omits_gpu_device_request(monkeypatch, tmp_path):
     monkeypatch.setenv("CPU_ONLY", "true")
     monkeypatch.setenv("DOCKER_IMAGE", "opengpu:cpu")
     monkeypatch.setattr(manager, "get_client", lambda: fake)
-    monkeypatch.setattr(manager, "random_password", lambda: "cpu-password")
-    monkeypatch.setattr(manager, "linux_password_hash", lambda _password: "$6$cpu-hash")
-    monkeypatch.setattr(manager, "send_credentials", lambda *args: None)
     monkeypatch.setattr(manager.socket, "socket", lambda *args: type("Probe", (), {
         "__enter__": lambda self: self, "__exit__": lambda self, *args: None,
         "bind": lambda self, address: None,
@@ -174,7 +169,7 @@ def test_cpu_only_omits_gpu_device_request(monkeypatch, tmp_path):
     monkeypatch.setattr(manager, "_get_owned_container", lambda *_args, **_kwargs: None)
 
     result = manager.provision_user(1, "user@example.edu", "gpu1", 0, "gpu-user-1", "gpu-workspace-1")
-    assert result == "$6$cpu-hash"
+    assert result is None
     assert captured["image"] == "opengpu:cpu"
     assert captured["device_requests"] == []
 
@@ -191,7 +186,7 @@ def test_managed_container_query_includes_stopped_containers(monkeypatch):
     assert captured["all"] is True
 
 
-def test_initial_provisioning_can_skip_credentials_email(monkeypatch, tmp_path):
+def test_provisioning_does_not_email_passwords(monkeypatch, tmp_path):
     volume = type("Volume", (), {"attrs": {"Labels": {"app": manager.APP_LABEL, "aiml.user_id": "1"}}})()
     created = type("Created", (), {"put_archive": lambda self, path, data: None})()
     fake = type("Client", (), {
@@ -202,8 +197,6 @@ def test_initial_provisioning_can_skip_credentials_email(monkeypatch, tmp_path):
         "volumes": type("Volumes", (), {"get": lambda self, name: volume})(),
     })()
     monkeypatch.setattr(manager, "get_client", lambda: fake)
-    monkeypatch.setattr(manager, "linux_password_hash", lambda password: "$6$hash")
-    monkeypatch.setattr(manager, "send_credentials", lambda *args: pytest.fail("credentials should not be sent"))
     monkeypatch.setattr(manager.socket, "socket", lambda *args: type("Probe", (), {
         "__enter__": lambda self: self, "__exit__": lambda self, *args: None, "bind": lambda self, address: None,
     })())
@@ -213,9 +206,8 @@ def test_initial_provisioning_can_skip_credentials_email(monkeypatch, tmp_path):
 
     result = manager.provision_user(
         1, "user@example.edu", "gpu1", 22001, "gpu-user-1", "gpu-workspace-1",
-        email_credentials=False,
     )
-    assert result == "$6$hash"
+    assert result is None
 
 
 def test_start_container_prepares_storage_before_start(monkeypatch, tmp_path):
@@ -293,45 +285,6 @@ def test_start_container_rejects_missing_container_before_prepare(monkeypatch):
     assert events == []
 
 
-def test_email_failure_releases_storage_through_remove_container(monkeypatch, tmp_path):
-    events = []
-
-    class Created:
-        def __init__(self):
-            self.labels = {"app": manager.APP_LABEL, "aiml.user_id": "1"}
-            self.status = "created"
-            self.name = "gpu-user-1"
-        def reload(self): pass
-        def put_archive(self, path, data): pass
-        def remove(self, force=False): events.append("container")
-
-    created = Created()
-    fake = type("Client", (), {
-        "containers": type("Containers", (), {
-            "get": lambda self, _name: (_ for _ in ()).throw(manager.docker.errors.NotFound("missing")),
-            "create": lambda self, **kwargs: created,
-        })(),
-    })()
-    monkeypatch.setattr(manager, "get_client", lambda: fake)
-    monkeypatch.setattr(manager, "linux_password_hash", lambda _password: "$6$hash")
-    monkeypatch.setattr(manager, "send_credentials", lambda *_args: (_ for _ in ()).throw(RuntimeError("smtp down")))
-    monkeypatch.setattr(manager.socket, "socket", lambda *args: type("Probe", (), {
-        "__enter__": lambda self: self, "__exit__": lambda self, *args: None,
-        "bind": lambda self, address: None,
-    })())
-    monkeypatch.setattr(manager, "settings", replace(manager.settings, workspace_root=str(tmp_path)))
-    monkeypatch.setattr(manager, "prepare_user_storage", lambda *_args, **_kwargs: _storage_paths(tmp_path))
-    monkeypatch.setattr(manager, "seed_scratch_etc", lambda _path: None)
-
-    def run_helper(command, **_kwargs):
-        events.append(tuple(command[-2:]))
-
-    monkeypatch.setattr(manager.subprocess, "run", run_helper)
-    with pytest.raises(RuntimeError, match="smtp down"):
-        manager.provision_user(1, "user@example.edu", "gpu1", 22001, "gpu-user-1", "gpu-workspace-1")
-    assert events == ["container", ("release", "1")]
-
-
 def test_provision_and_start_install_ssh_public_key(monkeypatch, tmp_path):
     import io
     import tarfile
@@ -362,8 +315,6 @@ def test_provision_and_start_install_ssh_public_key(monkeypatch, tmp_path):
         })(),
     })()
     monkeypatch.setattr(manager, "get_client", lambda: fake)
-    monkeypatch.setattr(manager, "linux_password_hash", lambda password: "$6$hash")
-    monkeypatch.setattr(manager, "send_credentials", lambda *args: None)
     monkeypatch.setattr(manager.socket, "socket", lambda *args: type("Probe", (), {
         "__enter__": lambda self: self, "__exit__": lambda self, *args: None, "bind": lambda self, address: None,
     })())

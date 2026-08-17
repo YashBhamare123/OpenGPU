@@ -23,10 +23,11 @@ class EnvField:
 
 
 FIELDS: tuple[EnvField, ...] = (
+    EnvField("OPENGPU_MODE", "lab (OTP allowlist) or personal (Tailscale claim links)", required=True, prompt=True, default="lab"),
     EnvField("SERVER_IP", "Address advertised in the SSH command", required=True, default="127.0.0.1"),
     EnvField("DOCKER_BIND_IP", "Host interface Docker publishes SSH on", required=True, default="127.0.0.1"),
     EnvField("WORKSPACE_ROOT", "Directory for workspace and scratch images", required=True, default="/var/lib/docker/opengpu-workspaces"),
-    EnvField("SMTP_HOST", "SMTP relay hostname; skip to print SSH passwords on the host", prompt=True),
+    EnvField("SMTP_HOST", "SMTP relay hostname; skip in Personal mode", prompt=True),
     EnvField("SMTP_PORT", "SMTP port", default="587"),
     EnvField("SMTP_FROM", "From address for login and SSH emails", prompt=True),
     EnvField("ALLOWED_ORIGINS", "Comma-separated browser origins", required=True, default="http://127.0.0.1:9473,http://localhost:9473"),
@@ -168,7 +169,10 @@ def prompt_env(
     detected = dict(detected or {})
     chosen: dict[str, str] = {}
     smtp_followups = {"SMTP_PORT", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD"}
+    personal_skip = {"SMTP_HOST", "SMTP_PORT", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD", "ADMIN_EMAILS", "ACCESS_CONTACT_EMAIL"}
     for field in FIELDS:
+        if chosen.get("OPENGPU_MODE") == "personal" and field.name in personal_skip:
+            continue
         if field.name in smtp_followups and not chosen.get("SMTP_HOST"):
             continue
         current = existing.get(field.name, os.environ.get(field.name, ""))
@@ -234,6 +238,8 @@ def configure_env(
         existing, values=values, input_fn=input_fn, getpass_fn=getpass_fn, detected=detected
     )
     missing = [field.name for field in FIELDS if field.required and not chosen.get(field.name)]
+    if chosen.get("OPENGPU_MODE") == "personal":
+        missing = [name for name in missing if name != "ADMIN_EMAILS"]
     if missing:
         raise ValueError("missing required settings: " + ", ".join(missing))
     if write:

@@ -3,6 +3,7 @@ import os
 import envfile
 
 REQUIRED = {
+    "OPENGPU_MODE": "lab",
     "SERVER_IP": "10.0.0.10",
     "DOCKER_BIND_IP": "10.0.0.10",
     "WORKSPACE_ROOT": "/var/tmp/opengpu-ws",
@@ -106,7 +107,7 @@ def test_interactive_setup_asks_only_identity_fields(tmp_path, monkeypatch):
         return _answer(prompt)
 
     envfile.configure_env(tmp_path / ".env", input_fn=fake, getpass_fn=fake)
-    assert asked == ["SMTP_HOST", "ADMIN_EMAILS", "ACCESS_CONTACT_EMAIL"]
+    assert asked == ["OPENGPU_MODE", "SMTP_HOST", "ADMIN_EMAILS", "ACCESS_CONTACT_EMAIL"]
 
 
 def test_empty_prompt_accepts_detected_origins(tmp_path, monkeypatch):

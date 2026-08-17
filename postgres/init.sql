@@ -5,7 +5,8 @@ CREATE EXTENSION IF NOT EXISTS citext;
 CREATE TABLE IF NOT EXISTS teams (
     id BIGSERIAL PRIMARY KEY,
     name TEXT UNIQUE,
-    email CITEXT UNIQUE NOT NULL,
+    email CITEXT UNIQUE,
+    handle CITEXT UNIQUE,
     display_name TEXT,
     ssh_port INTEGER UNIQUE,
     ssh_password_hash TEXT,
@@ -18,7 +19,8 @@ CREATE TABLE IF NOT EXISTS teams (
         CHECK (provisioning_state IN ('unprovisioned','pending','ready','failed','disabled')),
     provisioning_error TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_booking_at TIMESTAMPTZ
+    last_booking_at TIMESTAMPTZ,
+    CONSTRAINT teams_identity_check CHECK (email IS NOT NULL OR handle IS NOT NULL)
 );
 
 CREATE SEQUENCE IF NOT EXISTS ssh_port_seq START 22001;
@@ -46,6 +48,16 @@ CREATE TABLE IF NOT EXISTS reservations (
         tstzrange(start_time, end_time, '[)') WITH &&
     ) WHERE (cancelled = FALSE),
     UNIQUE (team_id, idempotency_key)
+);
+
+CREATE TABLE IF NOT EXISTS share_claims (
+    id BIGSERIAL PRIMARY KEY,
+    token_hash TEXT UNIQUE NOT NULL,
+    suggested_handle CITEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ,
+    consumed_team_id BIGINT REFERENCES teams(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS auth_challenges (

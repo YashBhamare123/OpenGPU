@@ -17,7 +17,7 @@ The framework layer is separate from the broader ML requirements so changes to a
 The entrypoint:
 
 1. Creates the Linux user named by `TEAM_NAME` without a default home or lastlog update (`useradd -M -l`), so `/home` and `/tmp` stay on the scratch mounts.
-2. Applies `TEAM_PASSWORD_HASH` with `chpasswd -e`.
+2. Locks the account password and enables public-key SSH only.
 3. Grants passwordless sudo and suppresses the Ubuntu MOTD.
 4. Assigns `/workspace` to the user and ensures `/tmp` is mode `1777`.
 5. Creates missing Ed25519, ECDSA, and RSA host keys in `/etc/ssh/host_keys`.

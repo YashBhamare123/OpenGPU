@@ -49,7 +49,7 @@ opengpu serve
 - API changes must keep reservation decisions transactional and must not gain Docker access.
 - Scheduler changes must preserve advisory-lock leadership and label-based ownership checks.
 - Database rule changes need both fresh-install SQL and an upgrade migration.
-- Container changes must preserve workspace, scratch, and host-key mounts, one-GPU allocation, unique reservation credentials, and a read-only container root.
+- Container changes must preserve workspace, scratch, and host-key mounts, one-GPU allocation, SSH public-key login, and a read-only container root.
 - Email code must never log or retain OTPs or plaintext SSH passwords.
 
 Run the tests described in [Testing](testing.md) before submitting a change. Add regression coverage at the lowest layer that can reproduce a bug, and add database coverage whenever correctness depends on constraints or concurrent transactions.

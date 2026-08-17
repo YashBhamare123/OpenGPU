@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 
 
 def _serve(args: argparse.Namespace) -> None:
@@ -49,6 +50,56 @@ def _init_host(_args: argparse.Namespace) -> None:
     raise SystemExit(setup())
 
 
+def _share(args: argparse.Namespace) -> None:
+    from share import create_claim
+    from ui import panel, print_banner
+
+    print_banner()
+    result = create_claim(args.handle, hours=args.hours)
+    print(
+        panel(
+            "Share link",
+            [
+                f"handle   {result['handle']}",
+                result["url"],
+                f"expires  {result['expires_at'].isoformat()}",
+            ],
+        )
+    )
+
+
+def _reserve(args: argparse.Namespace) -> None:
+    from share import create_reservation_for
+    from ui import panel, print_banner
+
+    start = datetime.fromisoformat(args.start)
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    end = start + timedelta(minutes=args.minutes)
+    print_banner()
+    result = create_reservation_for(args.handle, start, end)
+    print(
+        panel(
+            "Reservation",
+            [
+                f"id      {result['id']}",
+                f"handle  {result['handle']}",
+                f"start   {result['start_time']}",
+                f"end     {result['end_time']}",
+            ],
+        )
+    )
+
+
+def _revoke(args: argparse.Namespace) -> None:
+    from share import revoke_user
+    from ui import panel, print_banner
+
+    print_banner()
+    result = revoke_user(args.handle)
+    print(panel("Revoked", [result["handle"], "Sessions, future bookings, and SSH access were removed."]))
+
+
 def main(argv: list[str] | None = None) -> None:
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["admin"]:
@@ -65,7 +116,11 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     parser = argparse.ArgumentParser(prog="opengpu", description="OpenGPU host runtime")
-    commands = parser.add_subparsers(dest="command", required=True, metavar="{serve,setup,doctor,migrate,admin}")
+    commands = parser.add_subparsers(
+        dest="command",
+        required=True,
+        metavar="{serve,setup,doctor,migrate,share,reserve,revoke,admin}",
+    )
 
     serve = commands.add_parser("serve", help="Run the API, scheduler, and local SSH gateway")
     serve.add_argument("--host", default=os.environ.get("API_HOST", "127.0.0.1"))
@@ -90,6 +145,21 @@ def main(argv: list[str] | None = None) -> None:
 
     migrate_cmd = commands.add_parser("migrate", help="Apply the PostgreSQL schema or pending migrations")
     migrate_cmd.set_defaults(func=_migrate)
+
+    share = commands.add_parser("share", help="Create a Personal-mode claim link")
+    share.add_argument("handle")
+    share.add_argument("--hours", type=int, default=None)
+    share.set_defaults(func=_share)
+
+    reserve = commands.add_parser("reserve", help="Create a reservation for a user")
+    reserve.add_argument("handle")
+    reserve.add_argument("--start", required=True, help="ISO-8601 start time")
+    reserve.add_argument("--minutes", type=int, default=60)
+    reserve.set_defaults(func=_reserve)
+
+    revoke = commands.add_parser("revoke", help="Remove a user's sessions, bookings, and SSH key")
+    revoke.add_argument("handle")
+    revoke.set_defaults(func=_revoke)
 
     commands.add_parser("admin", help="Administration commands")
     args = parser.parse_args(argv)

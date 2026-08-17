@@ -37,8 +37,15 @@ def test_help_hides_internal_commands(capsys):
     assert exc.value.code == 0
     out = capsys.readouterr().out
     assert "==SUPPRESS==" not in out
-    assert "{serve,setup,doctor,migrate,admin}" in out
+    assert "{serve,setup,doctor,migrate,share,reserve,revoke,admin}" in out
     assert "init-host" not in out
+
+
+def test_share_help_mentions_handle(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["share", "--help"])
+    assert exc.value.code == 0
+    assert "handle" in capsys.readouterr().out.lower()
 
 
 def test_serve_defaults_to_no_tunnel(monkeypatch):

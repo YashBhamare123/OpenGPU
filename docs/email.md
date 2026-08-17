@@ -1,25 +1,12 @@
 # Email
 
-OpenGPU uses SMTP with STARTTLS for three transactional messages: login OTPs, reservation SSH credentials, and cancellation confirmations. Skip `SMTP_HOST` during setup to run without a relay: self-service booking is disabled, only administrators can request login codes (printed on the host terminal), and SSH passwords print there for sharing instead of being emailed.
+OpenGPU uses SMTP with STARTTLS in **Lab** mode for login OTPs and cancellation confirmations. It does not email SSH passwords. Personal mode does not use SMTP. Skip `SMTP_HOST` during Lab setup to run without a relay: self-service booking is disabled and only administrators can request login codes (printed on the host terminal).
 
 ## Login codes
 
 The OTP email includes matching plain-text and professionally formatted HTML alternatives, with a copy-friendly one-time-code block and explicit expiry guidance. The request endpoint suppresses SMTP errors; its approval status lets the frontend direct unapproved users to the administrator.
 
 Codes are six digits, stored only as hashes, expire according to `OTP_MINUTES`, and are limited by attempts and hourly issuance.
-
-## Reservation credentials
-
-Each successful reservation provisioning sends multipart plain-text and HTML email containing:
-
-- Reservation date and time
-- Exact SSH command
-- Reservation-specific password
-- Notice that the next reservation receives a different password
-
-The HTML separates the username, `@`, and host into elements to discourage mail clients from converting the SSH target into an email hyperlink. Command and password blocks use a monospaced font stack.
-
-Plaintext passwords exist only during provisioning and SMTP delivery. They must not be logged, persisted, placed in audit details, or included in exception messages. If delivery fails, the associated container is removed so a retry cannot leave an unknown password active.
 
 ## Cancellation confirmations
 

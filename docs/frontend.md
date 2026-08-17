@@ -20,7 +20,7 @@ The global state tracks the authenticated user, reservations, viewed date, live 
 - The 24-hour timeline renders availability, other reservations, the user's reservation, and the live selection.
 - Start time accepts any minute. Duration changes in 15-minute increments from 15 minutes to the `RESERVATION_LIMIT_MINUTES` value returned by `/me`.
 - The selection is validated in the browser before the confirmation dialog opens; PostgreSQL remains authoritative.
-- Reservation submission sends a unique `Idempotency-Key` and polls `/me` while provisioning rotates credentials.
+- Reservation submission sends a unique `Idempotency-Key` and polls `/me` while provisioning installs the SSH public key.
 - Reservations refresh every 30 seconds. A `401` returns the UI to login.
 
 ## Rendering and styling
