@@ -23,6 +23,7 @@ def _preserve_env(monkeypatch):
             monkeypatch.delenv(field.name, raising=False)
     monkeypatch.setenv("DOCKER_IMAGE", "yashbhamare123/opengpu:ml")
     monkeypatch.setenv("CPU_ONLY", "false")
+    monkeypatch.setattr("detect.host_defaults", dict)
 
 
 def _answer(prompt: str, *, empty_first: dict[str, int] | None = None) -> str:
@@ -91,6 +92,45 @@ def test_required_reprompts_on_empty(tmp_path, monkeypatch):
     chosen = envfile.configure_env(path, input_fn=fake, getpass_fn=fake)
     assert chosen["ADMIN_EMAILS"] == REQUIRED["ADMIN_EMAILS"]
     assert pending["ADMIN_EMAILS"] == 0
+
+
+def test_interactive_setup_asks_only_identity_fields(tmp_path, monkeypatch):
+    _preserve_env(monkeypatch)
+    monkeypatch.delenv("ADMIN_EMAILS", raising=False)
+    for key in ("SMTP_HOST", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD", "ACCESS_CONTACT_EMAIL"):
+        monkeypatch.delenv(key, raising=False)
+    asked = []
+
+    def fake(prompt):
+        asked.append(prompt.split()[0])
+        return _answer(prompt)
+
+    envfile.configure_env(tmp_path / ".env", input_fn=fake, getpass_fn=fake)
+    assert asked == ["SMTP_HOST", "ADMIN_EMAILS", "ACCESS_CONTACT_EMAIL"]
+
+
+def test_empty_prompt_accepts_detected_origins(tmp_path, monkeypatch):
+    _preserve_env(monkeypatch)
+    for key in ("ALLOWED_ORIGINS", "COOKIE_SECURE", "ADMIN_EMAILS"):
+        monkeypatch.delenv(key, raising=False)
+    path = tmp_path / ".env"
+    detected = {
+        "ALLOWED_ORIGINS": "http://127.0.0.1:8000,http://localhost:8000",
+        "COOKIE_SECURE": "false",
+        "SERVER_IP": "127.0.0.1",
+        "DOCKER_BIND_IP": "127.0.0.1",
+        "WORKSPACE_ROOT": "/var/tmp/ws",
+    }
+
+    def fake(prompt):
+        name = prompt.split()[0]
+        if name == "ADMIN_EMAILS":
+            return "admin@example.edu"
+        return ""
+
+    chosen = envfile.configure_env(path, input_fn=fake, getpass_fn=fake, detected=detected)
+    assert chosen["ALLOWED_ORIGINS"] == detected["ALLOWED_ORIGINS"]
+    assert chosen["COOKIE_SECURE"] == "false"
 
 
 def test_default_env_path_uses_existing_cwd_env(tmp_path, monkeypatch):

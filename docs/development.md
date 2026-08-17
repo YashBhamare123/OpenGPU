@@ -11,7 +11,7 @@ python -m pip install -r requirements.txt
 opengpu setup --skip-helper --skip-image
 ```
 
-`opengpu setup` writes `.env`. Optional variables accept `skip`. Use `--skip-env` to keep an existing file. `requirements-ml.txt` belongs to the GPU image and is not required for routine API or scheduler tests.
+`opengpu setup` writes `.env`. It asks only for admin emails, optional SMTP, and the public contact address. CPU, memory, NVIDIA, ports, bind addresses, and browser origins are detected and stored without prompting. Optional variables accept `skip`. Use `--skip-env` to keep an existing file. `requirements-ml.txt` belongs to the GPU image and is not required for routine API or scheduler tests.
 
 ## Source map
 
@@ -25,7 +25,7 @@ opengpu setup --skip-helper --skip-image
 | User image | `Dockerfile`, `Dockerfile.cpu`, `requirements-ml.txt` |
 | Email | `mailer.py` |
 | Administration | `admin.py`, `python -m cli admin` |
-| Local CLI | `opengpu setup`, `opengpu migrate`, `opengpu doctor`, `opengpu serve` |
+| Local CLI | `opengpu setup`, `opengpu migrate`, `opengpu doctor`, `opengpu serve`, `detect.py` |
 | Asset paths | `paths.py` |
 | Local supervision | `start.sh` |
 | Production units | `deploy/` |

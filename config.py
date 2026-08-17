@@ -91,7 +91,7 @@ class Settings:
         "ACCESS_CONTACT_EMAIL", "cynaptics@iiti.ac.in"
     ).strip().lower()
     public_base_url: str = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
-    ssh_public_port: int = _int("SSH_PUBLIC_PORT", 2222)
+    ssh_public_port: int = _int("SSH_PUBLIC_PORT", 9474)
     ssh_gateway_bind: str = os.environ.get("SSH_GATEWAY_BIND", "127.0.0.1")
 
 

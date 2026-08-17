@@ -129,7 +129,7 @@ fi
 echo "Docker image: ok ($docker_image)"
 
 python3 -m py_compile \
-  api.py admin.py cli.py config.py database.py envfile.py gateway.py host.py localdb.py mailer.py manager.py migrate.py paths.py scheduler.py security.py tunnel.py
+  api.py admin.py cli.py config.py database.py detect.py envfile.py gateway.py host.py localdb.py mailer.py manager.py migrate.py paths.py scheduler.py security.py tunnel.py
 
 if [[ "$CHECK_ONLY" == true ]]; then
   echo "All checks passed."
@@ -147,7 +147,7 @@ api_port="$(OPENGPU_ENV_FILE="$ENV_FILE" python3 - <<'PY'
 import os
 from dotenv import load_dotenv
 load_dotenv(os.environ["OPENGPU_ENV_FILE"])
-print(os.environ.get("API_PORT", "8000"))
+print(os.environ.get("API_PORT", "9473"))
 PY
 )"
 

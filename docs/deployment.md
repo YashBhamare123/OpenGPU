@@ -24,7 +24,7 @@ opengpu doctor
 opengpu serve
 ```
 
-`opengpu setup` prompts for required settings and writes a mode-600 `.env`. Skip SMTP to run without email: only administrators can book, login codes for admins print on the host terminal, and SSH passwords print there for sharing. Compose starts Postgres and writes `DATABASE_URL` without printing the password.
+`opengpu setup` writes a mode-600 `.env`. It asks for admin emails, optional SMTP, and a public contact address. Host CPU, memory, NVIDIA, ports, bind addresses, and browser origins are detected automatically. Skip SMTP to run without email: only administrators can book, login codes for admins print on the host terminal, and SSH passwords print there for sharing. Compose starts Postgres and writes `DATABASE_URL` without printing the password.
 
 `scripts/configure-docker-storage-backend` is not required for these virtual-disk caps; it only forces Docker onto overlay2 and is optional. Reservations default to a 2 GB persistent workspace and 100 GB scratch disk for `/home`, `/tmp`, and a writable `/etc` copy; administrators can adjust both up to a combined 200 GB. The container root filesystem is read-only so users cannot fill the Docker overlay. The helper owns image creation and loop mounts; the scheduler account does not need general write access to `WORKSPACE_ROOT`.
 
@@ -74,11 +74,11 @@ For remote SSH, set `NGROK_AUTHTOKEN` or `NGROK_TOKEN` and run `opengpu serve --
 Verify:
 
 ```bash
-curl -fsS http://127.0.0.1:8000/health/live
-curl -fsS http://127.0.0.1:8000/health/ready
+curl -fsS http://127.0.0.1:9473/health/live
+curl -fsS http://127.0.0.1:9473/health/ready
 ```
 
-Adjust the address if `API_HOST` is not localhost.
+Adjust the address if `API_HOST` is not localhost. The default API port is `9473` and the SSH gateway is `9474`; setup picks the next free port if either is taken.
 
 ## Administration
 
