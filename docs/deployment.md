@@ -24,7 +24,7 @@ opengpu doctor
 opengpu serve
 ```
 
-`opengpu setup` writes a mode-600 `.env`. It asks for Lab vs Personal mode, then Lab identity/SMTP or Personal Tailscale Funnel. Host CPU, memory, NVIDIA, ports, bind addresses, and browser origins are detected automatically.
+`opengpu setup` writes a mode-600 `.env`. Each question is a separate page with the OpenGPU wordmark at the top. Choose Lab vs Personal, SMTP, HTTPS cookies, and GPU vs CPU from numbered options; host CPU, memory, ports, bind addresses, and browser origins are detected automatically.
 
 `scripts/configure-docker-storage-backend` is not required for these virtual-disk caps; it only forces Docker onto overlay2 and is optional. Reservations default to a 2 GB persistent workspace and 100 GB scratch disk for `/home`, `/tmp`, and a writable `/etc` copy; administrators can adjust both up to a combined 200 GB. The container root filesystem is read-only so users cannot fill the Docker overlay. The helper owns image creation and loop mounts; the scheduler account does not need general write access to `WORKSPACE_ROOT`.
 

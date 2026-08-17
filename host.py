@@ -239,8 +239,27 @@ def enable_cpu_only() -> None:
 def prompt_cpu_only(*, input_fn=input) -> bool:
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return False
-    answer = input_fn("NVIDIA was not detected. Run CPU-only with the opengpu:cpu image? [y/N] ")
-    return str(answer or "").strip().lower() in {"y", "yes"}
+    from ui import ask_choice
+
+    def wrapped(prompt: str) -> str:
+        answer = str(input_fn(prompt) or "").strip().lower()
+        if answer in {"y", "yes"}:
+            return "cpu"
+        if answer in {"n", "no"}:
+            return "abort"
+        return answer
+
+    picked = ask_choice(
+        "NVIDIA GPU",
+        "No NVIDIA driver or nvidia-container-toolkit was found.",
+        [
+            ("abort", "Stop setup", "Install NVIDIA, then rerun opengpu doctor"),
+            ("cpu", "Continue CPU-only", "User containers will not request a GPU"),
+        ],
+        default=0,
+        input_fn=wrapped,
+    )
+    return picked == "cpu"
 
 
 def ensure_image() -> Check:

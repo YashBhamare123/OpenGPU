@@ -4,7 +4,7 @@ OpenGPU has two admission modes. The scheduler, reservation rules, containers, s
 
 ## Lab
 
-The operator configures the institutional email allowlist and SMTP once during `opengpu setup`. Users open the web UI, verify an approved email with a one-time code, add an SSH public key on first login, and book GPU time on the shared calendar. OpenGPU installs that public key into the user's container when a reservation starts. It does not generate or email SSH passwords.
+The operator chooses Lab mode and SMTP on the setup pages, then the institutional email allowlist. Users open the web UI, verify an approved email with a one-time code, add an SSH public key on first login, and book GPU time on the shared calendar. OpenGPU installs that public key into the user's container when a reservation starts. It does not generate or email SSH passwords.
 
 ## Personal
 

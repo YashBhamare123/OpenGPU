@@ -1,4 +1,4 @@
-from ui import banner, format_checks, panel
+from ui import banner, format_checks, panel, wordmark
 
 
 class Check:
@@ -12,6 +12,13 @@ class Check:
 def test_banner_includes_wordmarks():
     text = banner()
     assert "OPENGPU" in text or "██████" in text
+
+
+def test_setup_wordmark_is_opengpu_only():
+    text = wordmark()
+    assert "██████" in text
+    assert "CYNAPTICS" not in text
+    assert "██╗   ██╗███╗   ██╗" not in text
 
 
 def test_panel_is_plain_without_tty():
