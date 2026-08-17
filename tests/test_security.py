@@ -1,4 +1,5 @@
 import pytest
+
 from security import (
     InvalidSshPublicKey,
     hash_secret,

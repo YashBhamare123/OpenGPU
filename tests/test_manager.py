@@ -341,8 +341,9 @@ def test_provision_and_start_install_ssh_public_key(monkeypatch, tmp_path):
     host_keys = tmp_path / "users" / "1" / "ssh-host-keys"
 
     class Created:
-        labels = {"app": manager.APP_LABEL, "aiml.user_id": "1"}
-        started = False
+        def __init__(self):
+            self.labels = {"app": manager.APP_LABEL, "aiml.user_id": "1"}
+            self.started = False
 
         def put_archive(self, path, data):
             captured["archive"] = (path, data)

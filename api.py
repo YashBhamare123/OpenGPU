@@ -23,10 +23,10 @@ from database import get_connection
 from mailer import deliver_cancellation, deliver_otp, smtp_enabled
 from paths import ROOT, frontend_path
 from security import (
+    InvalidSshPublicKey,
     generate_otp,
     generate_token,
     hash_secret,
-    InvalidSshPublicKey,
     normalize_email,
     otp_expiry,
     parse_ssh_public_key,

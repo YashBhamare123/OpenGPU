@@ -28,6 +28,7 @@ def safe_test_database():
 def conn():
     connection = psycopg.connect(TEST_URL)
     connection.execute("TRUNCATE audit_events,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
+    connection.commit()
     yield connection
     connection.rollback()
     connection.close()

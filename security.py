@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 
 from config import settings
 
-
 ALLOWED_SSH_KEY_TYPES = frozenset({
     "ssh-ed25519",
     "ssh-rsa",
