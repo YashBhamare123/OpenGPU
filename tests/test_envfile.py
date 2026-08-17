@@ -94,6 +94,21 @@ def test_required_reprompts_on_empty(tmp_path, monkeypatch):
     assert pending["ADMIN_EMAILS"] == 0
 
 
+def test_interactive_setup_asks_only_identity_fields(tmp_path, monkeypatch):
+    _preserve_env(monkeypatch)
+    monkeypatch.delenv("ADMIN_EMAILS", raising=False)
+    for key in ("SMTP_HOST", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD", "ACCESS_CONTACT_EMAIL"):
+        monkeypatch.delenv(key, raising=False)
+    asked = []
+
+    def fake(prompt):
+        asked.append(prompt.split()[0])
+        return _answer(prompt)
+
+    envfile.configure_env(tmp_path / ".env", input_fn=fake, getpass_fn=fake)
+    assert asked == ["SMTP_HOST", "ADMIN_EMAILS", "ACCESS_CONTACT_EMAIL"]
+
+
 def test_empty_prompt_accepts_detected_origins(tmp_path, monkeypatch):
     _preserve_env(monkeypatch)
     for key in ("ALLOWED_ORIGINS", "COOKIE_SECURE", "ADMIN_EMAILS"):

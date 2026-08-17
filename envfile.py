@@ -19,22 +19,23 @@ class EnvField:
     required: bool = False
     secret: bool = False
     default: str = ""
+    prompt: bool = False
 
 
 FIELDS: tuple[EnvField, ...] = (
     EnvField("SERVER_IP", "Address advertised in the SSH command", required=True, default="127.0.0.1"),
     EnvField("DOCKER_BIND_IP", "Host interface Docker publishes SSH on", required=True, default="127.0.0.1"),
     EnvField("WORKSPACE_ROOT", "Directory for workspace and scratch images", required=True, default="/var/lib/docker/opengpu-workspaces"),
-    EnvField("SMTP_HOST", "SMTP relay hostname; skip to print SSH passwords on the host"),
+    EnvField("SMTP_HOST", "SMTP relay hostname; skip to print SSH passwords on the host", prompt=True),
     EnvField("SMTP_PORT", "SMTP port", default="587"),
-    EnvField("SMTP_FROM", "From address for login and SSH emails"),
-    EnvField("ALLOWED_ORIGINS", "Comma-separated browser origins", required=True),
-    EnvField("COOKIE_SECURE", "true when serving over HTTPS", required=True, default="true"),
-    EnvField("ADMIN_EMAILS", "Comma-separated admin emails", required=True),
-    EnvField("SMTP_USER", "SMTP username"),
-    EnvField("SMTP_PASSWORD", "SMTP password", secret=True),
+    EnvField("SMTP_FROM", "From address for login and SSH emails", prompt=True),
+    EnvField("ALLOWED_ORIGINS", "Comma-separated browser origins", required=True, default="http://127.0.0.1:8000,http://localhost:8000"),
+    EnvField("COOKIE_SECURE", "true when serving over HTTPS", required=True, default="false"),
+    EnvField("ADMIN_EMAILS", "Comma-separated admin emails", required=True, prompt=True),
+    EnvField("SMTP_USER", "SMTP username", prompt=True),
+    EnvField("SMTP_PASSWORD", "SMTP password", secret=True, prompt=True),
     EnvField("PUBLIC_BASE_URL", "Public site URL"),
-    EnvField("ACCESS_CONTACT_EMAIL", "Contact shown when access is denied"),
+    EnvField("ACCESS_CONTACT_EMAIL", "Contact shown when access is denied", prompt=True),
     EnvField("DOCKER_IMAGE", "User container image", default="yashbhamare123/opengpu:ml"),
     EnvField("CPU_ONLY", "true to run user containers without a GPU", default="false"),
     EnvField("STORAGE_HELPER", "Installed storage helper path", default="/usr/local/sbin/opengpu-storage-init"),
@@ -171,7 +172,13 @@ def prompt_env(
         if field.name in smtp_followups and not chosen.get("SMTP_HOST"):
             continue
         current = existing.get(field.name, os.environ.get(field.name, ""))
+        if field.name == "ACCESS_CONTACT_EMAIL" and not current:
+            current = chosen.get("ADMIN_EMAILS", "").split(",")[0].strip()
         fallback = _field_default(field, detected)
+        if field.name == "COOKIE_SECURE" and chosen.get("ALLOWED_ORIGINS"):
+            from detect import cookie_secure_for
+
+            fallback = cookie_secure_for(chosen["ALLOWED_ORIGINS"])
         if values is not None:
             if field.name in values:
                 raw = values[field.name]
@@ -189,6 +196,13 @@ def prompt_env(
             elif fallback:
                 chosen[field.name] = fallback
             continue
+        if not field.prompt:
+            picked = current or fallback
+            if picked:
+                chosen[field.name] = picked
+            elif field.required:
+                raise ValueError(f"{field.name} is required")
+            continue
         while True:
             picked = _prompt_one(field, current, input_fn=input_fn, getpass_fn=getpass_fn, detected=detected)
             if picked is None and field.required:
@@ -196,16 +210,8 @@ def prompt_env(
                 continue
             if picked is not None:
                 chosen[field.name] = picked
-                if field.name == "ALLOWED_ORIGINS":
-                    detected["COOKIE_SECURE"] = _cookie_secure(picked)
             break
     return chosen
-
-
-def _cookie_secure(origins: str) -> str:
-    from detect import cookie_secure_for
-
-    return cookie_secure_for(origins)
 
 
 def configure_env(
