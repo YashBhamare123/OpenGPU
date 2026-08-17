@@ -59,3 +59,10 @@ def test_foreign_origin_is_rejected():
         assert response.status_code == 403
     finally:
         object.__setattr__(settings, "allowed_origins", previous)
+
+
+def test_invalid_ssh_key_is_rejected_before_database_access(monkeypatch):
+    monkeypatch.setattr(api, "get_connection", lambda: pytest.fail("must not connect"))
+    with pytest.raises(HTTPException) as error:
+        api.set_my_ssh_key(api.SshKeyRequest(public_key="not-a-key"), user={"id": 1})
+    assert error.value.status_code == 400

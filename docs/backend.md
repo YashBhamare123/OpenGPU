@@ -8,6 +8,8 @@ Only enabled rows in `teams` can receive an OTP. The request response indicates 
 
 Verification locks the newest usable challenge, increments attempts before comparison, consumes the challenge on success, and creates a server-side session. Logout revokes the matching session and deletes the cookie.
 
+Authenticated users may replace or clear one SSH public key through `/me/ssh-key`. Administrators can manage another user's key through `/admin/users/{id}/ssh-key`. The API stores the canonical OpenSSH line and returns only fingerprint and comment.
+
 State-changing requests enforce the configured browser `Origin` when an Origin header is present. Production must use HTTPS with `COOKIE_SECURE=true`.
 
 ## Reservation transaction

@@ -16,6 +16,7 @@ OpenGPU is designed for trusted institutional users sharing one GPU. It hardens 
 - OTP requests expose only allowlist status and the public `ACCESS_CONTACT_EMAIL`; private `ADMIN_EMAILS` are never returned. Approved users are rate limited and code-verification failures remain generic.
 - Session cookies are HTTP-only, SameSite Lax, and configurable as Secure.
 - SSH passwords are generated per reservation; only their Linux password hash is retained.
+- Users may register one replaceable SSH public key. Only the canonical OpenSSH line is stored; listings and audit events expose the SHA-256 fingerprint, not the key.
 - SMTP and database credentials live outside Git in a mode-600 environment file.
 - SSH host private keys are generated per user in a root-owned bind mount and are not baked into the image.
 
@@ -40,7 +41,7 @@ The origin middleware is not a replacement for HTTPS, secure cookies, firewall r
 - Workspace and scratch capacity are enforced with sized ext4 images. The container root is read-only; passwordless sudo cannot fill the Docker overlay.
 - Workspace capacity is enforced, but automatic retention/deletion of idle `workspace.img` files is not yet implemented.
 - The shared Docker daemon is a high-privilege dependency.
-- Password authentication is weaker than per-reservation SSH certificates or user public keys.
+- Password authentication remains available alongside an optional per-user SSH public key.
 - Application-level OTP issuance is not a distributed edge rate limiter.
 
 Security changes should include tests for authentication boundaries, resource ownership, path validation, database concurrency, and failure cleanup. Never place production credentials or database dumps in issues, logs, fixtures, or commits.

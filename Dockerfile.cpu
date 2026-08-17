@@ -20,9 +20,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN mkdir -p /run/sshd /etc/ssh/host_keys
 
-RUN printf '%s\n' \
+# Ubuntu's sshd_config already sets PubkeyAuthentication no; sshd keeps the first value.
+RUN sed -i 's/^PubkeyAuthentication no$/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
+    printf '%s\n' \
     'PasswordAuthentication yes' \
-    'PubkeyAuthentication no' \
+    'PubkeyAuthentication yes' \
+    'AuthorizedKeysFile /etc/ssh/host_keys/authorized_keys' \
     'PermitRootLogin no' \
     'HostKey /etc/ssh/host_keys/ssh_host_ed25519_key' \
     'HostKey /etc/ssh/host_keys/ssh_host_ecdsa_key' \

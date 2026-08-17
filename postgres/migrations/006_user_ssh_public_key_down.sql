@@ -1,0 +1,5 @@
+BEGIN;
+
+ALTER TABLE teams DROP COLUMN IF EXISTS ssh_public_key;
+
+COMMIT;

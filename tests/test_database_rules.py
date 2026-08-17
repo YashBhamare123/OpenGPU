@@ -28,6 +28,7 @@ def safe_test_database():
 def conn():
     connection = psycopg.connect(TEST_URL)
     connection.execute("TRUNCATE audit_events,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
+    connection.commit()
     yield connection
     connection.rollback()
     connection.close()
@@ -159,3 +160,59 @@ def test_first_reservation_provisions_environment_in_single_request(monkeypatch)
         assert check.execute("SELECT count(*) FROM reservations WHERE team_id=%s", (user_id,)).fetchone()[0] == 1
         assert check.execute("SELECT provisioning_state FROM teams WHERE id=%s", (user_id,)).fetchone()[0] == "pending"
         assert check.execute("SELECT purpose,state FROM provisioning_jobs WHERE team_id=%s", (user_id,)).fetchone() == ("reservation", "pending")
+
+
+def _ed25519(comment="laptop"):
+    import base64
+    import struct
+    blob = struct.pack(">I", 11) + b"ssh-ed25519" + struct.pack(">I", 32) + bytes(range(32))
+    return f"ssh-ed25519 {base64.b64encode(blob).decode()} {comment}"
+
+
+def test_user_can_replace_and_clear_ssh_key(monkeypatch, conn):
+    conn.rollback()
+    user_id = conn.execute(
+        "INSERT INTO teams(name,email,provisioning_state) VALUES ('gpu1','keys@example.edu','ready') RETURNING id"
+    ).fetchone()[0]
+    conn.commit()
+    monkeypatch.setattr(api, "get_connection", lambda: psycopg.connect(TEST_URL))
+    first = api.set_my_ssh_key(api.SshKeyRequest(public_key=_ed25519("one")), user={"id": user_id})
+    replaced = api.set_my_ssh_key(api.SshKeyRequest(public_key=_ed25519("two")), user={"id": user_id})
+    assert first["comment"] == "one"
+    assert replaced["comment"] == "two"
+    assert replaced["fingerprint"].startswith("SHA256:")
+    with psycopg.connect(TEST_URL) as check:
+        stored = check.execute("SELECT ssh_public_key FROM teams WHERE id=%s", (user_id,)).fetchone()[0]
+        assert stored.endswith(" two")
+        assert check.execute(
+            "SELECT event_type,details->>'fingerprint' FROM audit_events WHERE team_id=%s AND event_type='ssh_key_set' ORDER BY id",
+            (user_id,),
+        ).fetchall()[-1][1] == replaced["fingerprint"]
+    api.clear_my_ssh_key(user={"id": user_id})
+    with psycopg.connect(TEST_URL) as check:
+        assert check.execute("SELECT ssh_public_key FROM teams WHERE id=%s", (user_id,)).fetchone()[0] is None
+        assert check.execute(
+            "SELECT count(*) FROM audit_events WHERE team_id=%s AND event_type='ssh_key_cleared'",
+            (user_id,),
+        ).fetchone()[0] == 1
+
+
+def test_admin_can_set_another_users_ssh_key(monkeypatch, conn):
+    conn.rollback()
+    user_id = conn.execute(
+        "INSERT INTO teams(name,email,provisioning_state) VALUES ('gpu2','other@example.edu','ready') RETURNING id"
+    ).fetchone()[0]
+    conn.commit()
+    monkeypatch.setattr(api, "get_connection", lambda: psycopg.connect(TEST_URL))
+    admin = {"id": 999, "email": "mc240041040@iiti.ac.in"}
+    view = api.admin_set_ssh_key(user_id, api.SshKeyRequest(public_key=_ed25519("admin")), admin=admin)
+    assert view["comment"] == "admin"
+    listed = api.admin_users(admin)
+    match = next(row for row in listed if row["id"] == user_id)
+    assert match["ssh_key"]["comment"] == "admin"
+    api.admin_clear_ssh_key(user_id, admin=admin)
+    with psycopg.connect(TEST_URL) as check:
+        assert check.execute("SELECT ssh_public_key FROM teams WHERE id=%s", (user_id,)).fetchone()[0] is None
+    with pytest.raises(HTTPException) as error:
+        api.admin_set_ssh_key(user_id + 99, api.SshKeyRequest(public_key=_ed25519()), admin=admin)
+    assert error.value.status_code == 404

@@ -1,8 +1,10 @@
+import io
 import os
 import secrets
 import socket
 import string
 import subprocess
+import tarfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -161,11 +163,46 @@ def user_storage_paths(
     return prepare_user_storage(user_id, workspace_gb, temp_storage_gb)
 
 
+def _authorized_keys_payload(public_key: str | None) -> bytes:
+    if not public_key:
+        return b""
+    return (public_key.rstrip("\n") + "\n").encode()
+
+
+def write_authorized_keys_file(host_keys: Path, public_key: str | None) -> None:
+    path = host_keys / "authorized_keys"
+    payload = _authorized_keys_payload(public_key)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+        os.chmod(path, 0o644)
+    except OSError:
+        # The helper-created host-key directory is root-owned. Docker install
+        # remains authoritative when the scheduler cannot write the file.
+        pass
+
+
+def install_authorized_keys(container, public_key: str | None) -> None:
+    # sshd reads authorized_keys after dropping to the login uid, so 0600 root
+    # is unreadable. 0644 root is enough because this path is not in $HOME.
+    payload = _authorized_keys_payload(public_key)
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as archive:
+        info = tarfile.TarInfo(name="authorized_keys")
+        info.size = len(payload)
+        info.mode = 0o644
+        info.uid = 0
+        info.gid = 0
+        archive.addfile(info, io.BytesIO(payload))
+    container.put_archive("/etc/ssh/host_keys", buffer.getvalue())
+
+
 def provision_user(user_id: int, email: str, username: str, ssh_port: int,
                    container_name: str, volume_name: str, allow_legacy_volume: bool = False,
                    email_credentials: bool = True, reservation_start: datetime | None = None,
                    reservation_end: datetime | None = None, workspace_gb: int = 2,
-                   temp_storage_gb: int = 100) -> str:
+                   temp_storage_gb: int = 100, ssh_public_key: str | None = None) -> str:
     if workspace_gb < 1 or temp_storage_gb < 1 or workspace_gb + temp_storage_gb > 200:
         raise ValueError("Reservation storage must total no more than 200 GB")
     password = random_password()
@@ -179,6 +216,7 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
     workspace, host_keys, scratch_home, scratch_tmp, scratch_etc = prepare_user_storage(
         user_id, workspace_gb, temp_storage_gb, convert=True,
     )
+    write_authorized_keys_file(host_keys, ssh_public_key)
     seed_scratch_etc(scratch_etc)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind((settings.docker_bind_ip, ssh_port))
@@ -206,6 +244,7 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
         read_only=True,
         tmpfs={"/run": "rw,nosuid,nodev,mode=755"},
     )
+    install_authorized_keys(container, ssh_public_key)
     if email_credentials:
         try:
             send_credentials(email, username, password, ssh_port, reservation_start, reservation_end)
@@ -228,14 +267,17 @@ def managed_containers():
 
 def start_container(
     name: str, user_id: int, workspace_gb: int = 2, temp_storage_gb: int = 100,
+    ssh_public_key: str | None = None,
 ) -> None:
     container = _get_owned_container(name, user_id)
     if container is None:
         raise RuntimeError(f"Managed container {name} is missing")
-    _workspace, _host_keys, _scratch_home, _scratch_tmp, scratch_etc = prepare_user_storage(
+    _workspace, host_keys, _scratch_home, _scratch_tmp, scratch_etc = prepare_user_storage(
         user_id, workspace_gb, temp_storage_gb,
     )
+    write_authorized_keys_file(host_keys, ssh_public_key)
     seed_scratch_etc(scratch_etc)
+    install_authorized_keys(container, ssh_public_key)
     container.start()
 
 

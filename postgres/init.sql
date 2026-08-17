@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS teams (
     display_name TEXT,
     ssh_port INTEGER UNIQUE,
     ssh_password_hash TEXT,
+    ssh_public_key TEXT,
     container_name TEXT UNIQUE,
     volume_name TEXT UNIQUE,
     legacy_volume BOOLEAN NOT NULL DEFAULT FALSE,

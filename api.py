@@ -23,12 +23,16 @@ from database import get_connection
 from mailer import deliver_cancellation, deliver_otp, smtp_enabled
 from paths import ROOT, frontend_path
 from security import (
+    InvalidSshPublicKey,
     generate_otp,
     generate_token,
     hash_secret,
     normalize_email,
     otp_expiry,
+    parse_ssh_public_key,
     session_expiry,
+    ssh_key_public_view,
+    ssh_public_key_fingerprint,
 )
 
 app = FastAPI(title="OpenGPU")
@@ -77,11 +81,35 @@ class AdminUserRequest(BaseModel):
     display_name: str | None = None
 
 
+class SshKeyRequest(BaseModel):
+    public_key: str
+
+
 def audit(cursor, event_type: str, team_id=None, details=None) -> None:
     cursor.execute(
         "INSERT INTO audit_events(team_id,event_type,details) VALUES (%s,%s,%s::jsonb)",
         (team_id, event_type, json.dumps(details or {})),
     )
+
+
+def canonical_ssh_key(public_key: str) -> str:
+    try:
+        return parse_ssh_public_key(public_key)
+    except InvalidSshPublicKey as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _store_ssh_key(cursor, user_id: int, public_key: str, event_details: dict) -> dict:
+    canonical = canonical_ssh_key(public_key)
+    cursor.execute("UPDATE teams SET ssh_public_key=%s WHERE id=%s", (canonical, user_id))
+    audit(cursor, "ssh_key_set", user_id,
+          {**event_details, "fingerprint": ssh_public_key_fingerprint(canonical)})
+    return ssh_key_public_view(canonical)
+
+
+def _clear_ssh_key(cursor, user_id: int, event_details: dict) -> None:
+    cursor.execute("UPDATE teams SET ssh_public_key=NULL WHERE id=%s", (user_id,))
+    audit(cursor, "ssh_key_cleared", user_id, event_details)
 
 
 def current_user(session: str | None = Cookie(default=None)) -> dict:
@@ -92,7 +120,7 @@ def current_user(session: str | None = Cookie(default=None)) -> dict:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT t.id,t.email,t.name,t.display_name,t.enabled,t.provisioning_state
+                SELECT t.id,t.email,t.name,t.display_name,t.enabled,t.provisioning_state,t.ssh_public_key
                 FROM sessions s JOIN teams t ON t.id=s.team_id
                 WHERE s.token_hash=%s AND s.revoked_at IS NULL AND s.expires_at>NOW()
                 """,
@@ -104,6 +132,7 @@ def current_user(session: str | None = Cookie(default=None)) -> dict:
         email = str(row[1])
         return {"id": row[0], "email": email, "username": row[2],
                 "display_name": row[3], "provisioning_state": row[5],
+                "ssh_key": ssh_key_public_view(row[6]),
                 "is_admin": normalize_email(email) in settings.admin_emails,
                 "self_booking": smtp_enabled()}
     finally:
@@ -232,6 +261,33 @@ def me(user: Annotated[dict, Depends(current_user)]):
     return {**user, "reservation_limit_minutes": settings.reservation_limit_minutes}
 
 
+@app.put("/me/ssh-key")
+def set_my_ssh_key(request: SshKeyRequest, user: Annotated[dict, Depends(current_user)]):
+    canonical_ssh_key(request.public_key)
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            view = _store_ssh_key(cursor, user["id"], request.public_key, {})
+        conn.commit()
+        return view
+    except HTTPException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.delete("/me/ssh-key", status_code=204)
+def clear_my_ssh_key(user: Annotated[dict, Depends(current_user)]):
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            _clear_ssh_key(cursor, user["id"], {})
+        conn.commit()
+    finally:
+        conn.close()
+
+
 @app.get("/reservations")
 def get_reservations(user: Annotated[dict, Depends(current_user)]):
     conn = get_connection()
@@ -258,13 +314,13 @@ def admin_users(_admin: Annotated[dict, Depends(require_admin)]):
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                """SELECT id,email,name,display_name,provisioning_state,enabled
+                """SELECT id,email,name,display_name,provisioning_state,enabled,ssh_public_key
                    FROM teams ORDER BY email"""
             )
             rows = cursor.fetchall()
         return [{"id": row[0], "email": str(row[1]), "username": row[2],
                  "display_name": row[3], "provisioning_state": row[4],
-                 "enabled": row[5]} for row in rows]
+                 "enabled": row[5], "ssh_key": ssh_key_public_view(row[6])} for row in rows]
     finally:
         conn.close()
 
@@ -316,6 +372,44 @@ def admin_whitelist_user(request: AdminUserRequest, admin: Annotated[dict, Depen
     except psycopg.errors.UniqueViolation as exc:
         conn.rollback()
         raise HTTPException(status_code=409, detail="Email or generated username is already in use") from exc
+    finally:
+        conn.close()
+
+
+@app.put("/admin/users/{user_id}/ssh-key")
+def admin_set_ssh_key(user_id: int, request: SshKeyRequest, admin: Annotated[dict, Depends(require_admin)]):
+    canonical_ssh_key(request.public_key)
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT id FROM teams WHERE id=%s FOR UPDATE", (user_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="User not found")
+            view = _store_ssh_key(
+                cursor, user_id, request.public_key, {"set_by_admin": admin["id"]}
+            )
+        conn.commit()
+        return view
+    except HTTPException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.delete("/admin/users/{user_id}/ssh-key", status_code=204)
+def admin_clear_ssh_key(user_id: int, admin: Annotated[dict, Depends(require_admin)]):
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT id FROM teams WHERE id=%s FOR UPDATE", (user_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="User not found")
+            _clear_ssh_key(cursor, user_id, {"cleared_by_admin": admin["id"]})
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 

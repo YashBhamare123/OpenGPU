@@ -24,10 +24,10 @@ The safety checks reject a URL whose database name does not end in `_test`. Test
 
 ## Coverage by area
 
-- `test_security.py`: normalization and non-recoverable secret hashes
+- `test_security.py`: normalization, non-recoverable secret hashes, and SSH public-key parsing
 - `test_api_contract.py`: authentication, origin, and reservation-limit contracts
-- `test_database_rules.py`: overlap, concurrency, idempotency, and first-booking provisioning
-- `test_manager.py`: Docker ownership, storage paths, credentials, and provisioning options
+- `test_database_rules.py`: overlap, concurrency, idempotency, first-booking provisioning, and SSH key replace/clear
+- `test_manager.py`: Docker ownership, storage paths, credentials, authorized_keys, and provisioning options
 - `test_scheduler.py`: desired-state transitions, future containers, and removal behavior
 - `test_mailer.py`: OTP and reservation credential delivery contracts
 

@@ -28,6 +28,7 @@ REQUIRED_TABLES = {
 }
 REQUIRED_TEAM_COLUMNS = {
     "ssh_password_hash",
+    "ssh_public_key",
     "provisioning_state",
     "volume_name",
     "legacy_volume",

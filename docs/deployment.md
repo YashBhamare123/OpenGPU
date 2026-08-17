@@ -90,6 +90,9 @@ python -m cli admin enable person@example.edu
 python -m cli admin cancel 42 --reason "admin request"
 python -m cli admin retry-provision person@example.edu
 python -m cli admin rotate-password person@example.edu
+python -m cli admin set-ssh-key person@example.edu --file ~/.ssh/id_ed25519.pub
+python -m cli admin show-ssh-key person@example.edu
+python -m cli admin clear-ssh-key person@example.edu
 ```
 
 Password rotation refuses to replace a running container. Disabling a user removes its container on the next reconciliation because disabled users are not retained.
