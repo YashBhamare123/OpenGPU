@@ -41,7 +41,7 @@ opengpu doctor
 opengpu serve
 ```
 
-`./start.sh --check` also runs `opengpu doctor` (via `python -m cli doctor`). `opengpu serve` runs the API, scheduler, and local SSH gateway together. Do not pass `--tunnel` unless you are testing remote SSH.
+`./start.sh --check` also runs `opengpu doctor` (via `python -m cli doctor`). `opengpu serve` runs the API, scheduler, and local SSH gateway together. Production systemd uses `opengpu api` plus `opengpu scheduler` instead. Do not pass `--tunnel` unless you are testing remote SSH.
 
 ## Change boundaries
 

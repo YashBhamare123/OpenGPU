@@ -25,9 +25,9 @@ jobs:
       - name: Shell syntax
         run: bash -n start.sh entrypoint.sh scripts/run-tests.sh scripts/opengpu-storage-init scripts/install-storage-helper
       - name: Python syntax
-        run: python -m py_compile api.py admin.py config.py database.py mailer.py manager.py scheduler.py security.py
+        run: python -m py_compile api.py admin.py cli.py config.py database.py detect.py envfile.py gateway.py host.py localdb.py mailer.py manager.py migrate.py paths.py scheduler.py security.py share.py tailscale.py tunnel.py ui.py
       - name: Ruff
-        run: python -m ruff check api.py admin.py config.py database.py mailer.py manager.py scheduler.py security.py tests
+        run: python -m ruff check api.py admin.py cli.py config.py database.py detect.py envfile.py gateway.py host.py localdb.py mailer.py manager.py migrate.py paths.py scheduler.py security.py share.py tailscale.py tunnel.py ui.py tests
 
   tests:
     runs-on: ubuntu-latest

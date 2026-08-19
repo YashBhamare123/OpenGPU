@@ -486,33 +486,36 @@ def setup(
     return 0
 
 
-def serve(*, host: str, port: int, tunnel: bool = False) -> None:
+def serve(*, host: str, port: int, tunnel: bool = False, scheduler: bool = True, pull_image: bool = True) -> None:
     import threading
 
     import uvicorn
 
     from gateway import serve_gateway
-    from scheduler import run as run_scheduler
     from ui import panel, print_banner
 
     print_banner()
 
-    image = ensure_image()
-    if not image.ok:
-        print(f"fail  image: {image.detail}", file=sys.stderr)
-        raise SystemExit(1)
+    if pull_image:
+        image = ensure_image()
+        if not image.ok:
+            print(f"fail  image: {image.detail}", file=sys.stderr)
+            raise SystemExit(1)
 
     stop = threading.Event()
     workers: list[threading.Thread] = []
     ngrok = None
 
-    def scheduler_worker() -> None:
-        try:
-            run_scheduler()
-        finally:
-            stop.set()
+    if scheduler:
+        from scheduler import run as run_scheduler
 
-    workers.append(threading.Thread(target=scheduler_worker, name="scheduler", daemon=True))
+        def scheduler_worker() -> None:
+            try:
+                run_scheduler()
+            finally:
+                stop.set()
+
+        workers.append(threading.Thread(target=scheduler_worker, name="scheduler", daemon=True))
     workers.append(threading.Thread(target=serve_gateway, args=(stop,), name="ssh-gateway", daemon=True))
     for worker in workers:
         worker.start()

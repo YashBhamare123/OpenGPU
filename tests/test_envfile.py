@@ -132,6 +132,7 @@ def test_personal_mode_skips_lab_email_pages(tmp_path, monkeypatch, capsys):
     assert "Lab email" not in out
     assert "Administrator emails" not in out
     assert chosen["COOKIE_SECURE"] == "true"
+    assert chosen["CLAIM_HOURS"] == "72"
 
 
 def test_empty_prompt_accepts_detected_origins(tmp_path, monkeypatch):

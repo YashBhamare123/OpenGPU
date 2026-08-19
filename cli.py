@@ -10,6 +10,12 @@ def _serve(args: argparse.Namespace) -> None:
     serve(host=args.host, port=args.port, tunnel=args.tunnel and not args.no_tunnel)
 
 
+def _api(args: argparse.Namespace) -> None:
+    from host import serve
+
+    serve(host=args.host, port=args.port, tunnel=False, scheduler=False, pull_image=False)
+
+
 def _scheduler(_args: argparse.Namespace) -> None:
     from scheduler import run
 
@@ -110,6 +116,12 @@ def main(argv: list[str] | None = None) -> None:
         return
     if argv[:1] == ["scheduler"]:
         _hidden("scheduler", _scheduler, argv[1:])
+        return
+    if argv[:1] == ["api"]:
+        parser = argparse.ArgumentParser(prog="opengpu api")
+        parser.add_argument("--host", default=os.environ.get("API_HOST", "127.0.0.1"))
+        parser.add_argument("--port", type=int, default=int(os.environ.get("API_PORT", "9473")))
+        _api(parser.parse_args(argv[1:]))
         return
     if argv[:1] == ["init-host"]:
         _hidden("init-host", _init_host, argv[1:])

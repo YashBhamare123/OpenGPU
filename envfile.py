@@ -45,6 +45,7 @@ FIELDS: tuple[EnvField, ...] = (
     EnvField("SSH_PORT_END", "Last published container SSH port", default="32000"),
     EnvField("API_HOST", "API listen address", default="127.0.0.1"),
     EnvField("API_PORT", "API listen port", default="9473"),
+    EnvField("CLAIM_HOURS", "Personal-mode claim link lifetime", default="72"),
     EnvField("SESSION_HOURS", "Browser session length", default="12"),
     EnvField("OTP_MINUTES", "Login code lifetime", default="10"),
     EnvField("OTP_MAX_ATTEMPTS", "Login code attempts", default="5"),

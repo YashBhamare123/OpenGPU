@@ -39,6 +39,7 @@ def test_help_hides_internal_commands(capsys):
     assert "==SUPPRESS==" not in out
     assert "{serve,setup,doctor,migrate,share,reserve,revoke,admin}" in out
     assert "init-host" not in out
+    assert "  api" not in out
 
 
 def test_share_help_mentions_handle(capsys):
@@ -51,9 +52,40 @@ def test_share_help_mentions_handle(capsys):
 def test_serve_defaults_to_no_tunnel(monkeypatch):
     captured = {}
 
-    def fake_serve(*, host, port, tunnel):
-        captured.update(host=host, port=port, tunnel=tunnel)
+    def fake_serve(*, host, port, tunnel, scheduler=True, pull_image=True):
+        captured.update(host=host, port=port, tunnel=tunnel, scheduler=scheduler, pull_image=pull_image)
 
     monkeypatch.setattr("host.serve", fake_serve)
     cli.main(["serve", "--host", "127.0.0.1", "--port", "8000"])
-    assert captured == {"host": "127.0.0.1", "port": 8000, "tunnel": False}
+    assert captured == {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "tunnel": False,
+        "scheduler": True,
+        "pull_image": True,
+    }
+
+
+def test_api_skips_scheduler_and_image_pull(monkeypatch):
+    captured = {}
+
+    def fake_serve(*, host, port, tunnel, scheduler=True, pull_image=True):
+        captured.update(host=host, port=port, tunnel=tunnel, scheduler=scheduler, pull_image=pull_image)
+
+    monkeypatch.setattr("host.serve", fake_serve)
+    cli.main(["api", "--host", "127.0.0.1", "--port", "9473"])
+    assert captured == {
+        "host": "127.0.0.1",
+        "port": 9473,
+        "tunnel": False,
+        "scheduler": False,
+        "pull_image": False,
+    }
+
+
+def test_production_api_unit_does_not_start_combined_serve():
+    text = open("deploy/aiml-gpu-api.service", encoding="utf-8").read()
+    assert "opengpu api --host 127.0.0.1 --port 9473" in text
+    assert "opengpu serve" not in text
+    scheduler = open("deploy/aiml-gpu-scheduler.service", encoding="utf-8").read()
+    assert "opengpu scheduler" in scheduler
