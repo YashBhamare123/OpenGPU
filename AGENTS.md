@@ -12,7 +12,7 @@ GPU containers.
 - Database and migrations: `database.py`, `migrate.py`, `postgres/`
 - Scheduling and provisioning: `scheduler.py`, `manager.py`
 - User image and container startup: `Dockerfile`, `entrypoint.sh`
-- Email, administration, and local supervision: `mailer.py`, `admin.py`, `start.sh`
+- Email, administration, and local supervision: `mailer.py`, `admin.py`, `cli.py`, `host.py`, `start.sh`
 - Deployment and tests: `deploy/`, `tests/`, `scripts/run-tests.sh`
 
 Read `docs/development.md` and the relevant focused document in `docs/` before
@@ -29,7 +29,7 @@ changing a subsystem.
 - Database rule changes require both `postgres/init.sql` and an ordered upgrade
   migration (with a matching down migration where this repository uses one).
 - Preserve the per-user `/workspace` and SSH host-key mounts, one-GPU allocation,
-  and per-reservation SSH credentials. Only `/workspace` persists after a session.
+  and user SSH public keys installed at container start. Only `/workspace` persists after a session.
 - Never log or retain OTPs, plaintext passwords, or secrets.
 
 ## Working safely
@@ -89,7 +89,7 @@ For relevant static checks:
 
 ```bash
 bash -n start.sh entrypoint.sh scripts/run-tests.sh
-python -m py_compile api.py admin.py cli.py config.py database.py envfile.py gateway.py host.py localdb.py mailer.py manager.py migrate.py paths.py scheduler.py security.py tunnel.py
+python -m py_compile api.py admin.py cli.py config.py database.py envfile.py gateway.py host.py localdb.py mailer.py manager.py migrate.py paths.py scheduler.py security.py share.py tailscale.py tunnel.py ui.py
 docker build --check .
 ```
 

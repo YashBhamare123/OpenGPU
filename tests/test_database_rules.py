@@ -21,13 +21,13 @@ def safe_test_database():
         conn.execute(postgres_path("init.sql").read_text())
     yield
     with psycopg.connect(TEST_URL, autocommit=True) as conn:
-        conn.execute("TRUNCATE audit_events,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
+        conn.execute("TRUNCATE audit_events,share_claims,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
 
 
 @pytest.fixture
 def conn():
     connection = psycopg.connect(TEST_URL)
-    connection.execute("TRUNCATE audit_events,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
+    connection.execute("TRUNCATE audit_events,share_claims,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
     connection.commit()
     yield connection
     connection.rollback()
@@ -84,7 +84,7 @@ def test_cancelled_slot_can_be_reused(conn):
 
 def test_two_users_competing_for_one_slot_have_one_winner():
     with psycopg.connect(TEST_URL) as setup:
-        setup.execute("TRUNCATE audit_events,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
+        setup.execute("TRUNCATE audit_events,share_claims,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
         first = setup.execute("INSERT INTO teams(name,email,provisioning_state) VALUES ('gpu1','a@example.edu','ready') RETURNING id").fetchone()[0]
         second = setup.execute("INSERT INTO teams(name,email,provisioning_state) VALUES ('gpu2','b@example.edu','ready') RETURNING id").fetchone()[0]
         setup.commit()
@@ -114,7 +114,7 @@ def test_two_users_competing_for_one_slot_have_one_winner():
 
 def test_immediate_idempotent_api_retry_returns_original_while_provisioning(monkeypatch):
     with psycopg.connect(TEST_URL) as setup:
-        setup.execute("TRUNCATE audit_events,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
+        setup.execute("TRUNCATE audit_events,share_claims,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
         user_id = setup.execute(
             "INSERT INTO teams(name,email,provisioning_state) VALUES ('gpu1','retry@example.edu','ready') RETURNING id"
         ).fetchone()[0]
@@ -124,7 +124,7 @@ def test_immediate_idempotent_api_retry_returns_original_while_provisioning(monk
     monkeypatch.setattr(api, "smtp_enabled", lambda: True)
     start = datetime.now(timezone.utc) + timedelta(hours=1)
     request = api.ReservationRequest(start_time=start, end_time=start + timedelta(minutes=30))
-    user = {"id": user_id}
+    user = {"id": user_id, "ssh_key": {"fingerprint": "SHA256:test"}}
 
     first = api.create_reservation(request, user=user, idempotency_key="retry-key-0001")
     retry = api.create_reservation(request, user=user, idempotency_key="retry-key-0001")
@@ -142,7 +142,7 @@ def test_immediate_idempotent_api_retry_returns_original_while_provisioning(monk
 
 def test_first_reservation_provisions_environment_in_single_request(monkeypatch):
     with psycopg.connect(TEST_URL) as setup:
-        setup.execute("TRUNCATE audit_events,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
+        setup.execute("TRUNCATE audit_events,share_claims,provisioning_jobs,sessions,auth_challenges,reservations,teams RESTART IDENTITY CASCADE")
         user_id = setup.execute(
             "INSERT INTO teams(name,email,provisioning_state) VALUES ('gpu1','first@example.edu','unprovisioned') RETURNING id"
         ).fetchone()[0]
@@ -153,7 +153,7 @@ def test_first_reservation_provisions_environment_in_single_request(monkeypatch)
     start = datetime.now(timezone.utc) + timedelta(hours=1)
     request = api.ReservationRequest(start_time=start, end_time=start + timedelta(minutes=30))
 
-    result = api.create_reservation(request, user={"id": user_id}, idempotency_key="first-click-0001")
+    result = api.create_reservation(request, user={"id": user_id, "ssh_key": {"fingerprint": "SHA256:test"}}, idempotency_key="first-click-0001")
 
     assert result["id"] > 0
     with psycopg.connect(TEST_URL) as check:

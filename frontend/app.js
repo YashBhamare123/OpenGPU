@@ -27,12 +27,18 @@ function loginNotice(message=""){const el=$("login-notice");el.textContent=messa
 function busy(button,on,label){if(!button.dataset.label)button.dataset.label=button.textContent;button.disabled=on;button.textContent=on?label:button.dataset.label}
 async function api(path,options={}){const response=await fetch(path,options);let data={};try{data=await response.json()}catch{}if(!response.ok&&response.status!==202){if(response.status===401)showLogin();throw new Error(data.detail||"Something went wrong. Try again.")}return{response,data}}
 
-function showLogin(){state.user=null;clearInterval(state.refreshTimer);$("workspace").classList.add("hidden");$("user-menu").classList.add("hidden");$("login").classList.remove("hidden")}
+function showLogin(){state.user=null;clearInterval(state.refreshTimer);$("workspace").classList.add("hidden");$("user-menu").classList.add("hidden");$("ssh-key").classList.add("hidden");$("claim").classList.add("hidden");$("login").classList.remove("hidden")}
+function showKeySetup(user){
+  state.user=user;$("login").classList.add("hidden");$("claim").classList.add("hidden");$("workspace").classList.add("hidden");$("user-menu").classList.remove("hidden");
+  $("user-name").textContent=user.display_name||user.handle||user.username;$("user-email").textContent=user.email||user.handle||"";
+  $("admin-link").classList.toggle("hidden",!user.is_admin);$("ssh-key").classList.remove("hidden");$("ssh-key-input").focus();
+}
 function showApp(user){
-  state.user=user;state.reservationLimitMinutes=user.reservation_limit_minutes||120;state.viewDate=startOfDay(new Date());state.selection=initialSelection(state.viewDate);$("user-name").textContent=user.display_name||user.username;$("user-email").textContent=user.email;
+  if(!user.ssh_key){showKeySetup(user);return}
+  state.user=user;state.reservationLimitMinutes=user.reservation_limit_minutes||120;state.viewDate=startOfDay(new Date());state.selection=initialSelection(state.viewDate);$("user-name").textContent=user.display_name||user.handle||user.username;$("user-email").textContent=user.email||user.handle||"";
   $("admin-link").classList.toggle("hidden",!user.is_admin);
   document.querySelector(".booking-composer").classList.toggle("admin-only", user.self_booking===false && !user.is_admin);
-  $("login").classList.add("hidden");$("user-menu").classList.remove("hidden");$("workspace").classList.remove("hidden");updateSelection();loadReservations();
+  $("login").classList.add("hidden");$("claim").classList.add("hidden");$("ssh-key").classList.add("hidden");$("user-menu").classList.remove("hidden");$("workspace").classList.remove("hidden");updateSelection();loadReservations();
   clearInterval(state.refreshTimer);state.refreshTimer=setInterval(()=>{if(!document.hidden)loadReservations(true)},30000);
 }
 
@@ -95,17 +101,32 @@ $("submit-booking").addEventListener("click",async()=>{
   try{
     await api("/reservations",{method:"POST",headers:{"Content-Type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify({start_time:selection.start.toISOString(),end_time:selection.end.toISOString()})});
     $("confirm-dialog").close();
-    state.provisioningNoticeAt=Date.now();announce("Reservation confirmed",`${reservationRange(selection.start,selection.end)}. Preparing SSH access.`,"loading");await loadReservations(true);pollProvisioning();
+    state.provisioningNoticeAt=Date.now();announce("Reservation confirmed",`${reservationRange(selection.start,selection.end)}. Your SSH key will be installed when the session starts.`,"loading");await loadReservations(true);pollProvisioning();
   }catch(error){$("confirm-dialog").close();announce("Reservation not completed",error.message,"error");await loadReservations(true)}finally{busy(button,false)}
 });
-async function pollProvisioning(){clearTimeout(state.provisioningTimer);try{const{data}=await api("/me");if(data.provisioning_state==="ready"){const remaining=Math.max(0,900-(Date.now()-state.provisioningNoticeAt));state.provisioningTimer=setTimeout(()=>announce("SSH access sent","Check your email.","success"),remaining);return}if(data.provisioning_state==="failed"){announce("Setup failed","Contact an administrator.","error");return}state.provisioningTimer=setTimeout(pollProvisioning,3000)}catch(error){announce("Setup status unavailable",error.message,"error")}}
+async function pollProvisioning(){clearTimeout(state.provisioningTimer);try{const{data}=await api("/me");if(data.provisioning_state==="ready"){const remaining=Math.max(0,900-(Date.now()-state.provisioningNoticeAt));const command=data.username&&data.ssh_host?`ssh ${data.username}@${data.ssh_host} -p ${data.ssh_port}`:"Connect with your saved SSH public key";state.provisioningTimer=setTimeout(()=>announce("SSH ready",command,"success"),remaining);return}if(data.provisioning_state==="failed"){announce("Setup failed","Contact an administrator.","error");return}state.provisioningTimer=setTimeout(pollProvisioning,3000)}catch(error){announce("Setup status unavailable",error.message,"error")}}
 
 $("email-form").addEventListener("submit",async event=>{event.preventDefault();const submittedAt=Date.now();state.email=$("email").value.trim();loginNotice();busy($("email-submit"),true,"Sending…");try{const{data}=await api("/auth/request-code",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:state.email})});if(!data.approved){const remaining=Math.max(0,2000-(Date.now()-submittedAt));if(remaining)await new Promise(resolve=>setTimeout(resolve,remaining));$("contact-admin").textContent=data.admin_contact||"";$("contact-admin-row").classList.toggle("hidden",!data.admin_contact);$("email-form").classList.add("hidden");$("access-request").classList.remove("hidden");return}$("email-form").classList.add("hidden");$("code-form").classList.remove("hidden");$("code").focus()}catch(error){loginNotice(error.message)}finally{busy($("email-submit"),false)}});
 $("code-form").addEventListener("submit",async event=>{event.preventDefault();loginNotice();busy($("code-submit"),true,"Verifying…");try{await api("/auth/verify-code",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:state.email,code:$("code").value.trim()})});const{data}=await api("/me");showApp(data)}catch(error){loginNotice(error.message);$("code").select()}finally{busy($("code-submit"),false)}});
 $("change-email").addEventListener("click",()=>{$("code-form").classList.add("hidden");$("email-form").classList.remove("hidden");$("code").value="";loginNotice();$("email").focus()});
 $("retry-access").addEventListener("click",()=>{$("access-request").classList.add("hidden");$("email-form").classList.remove("hidden");$("email").focus()});
 $("copy-admin-email").addEventListener("click",async()=>{const button=$("copy-admin-email"),email=$("contact-admin").textContent;if(!email)return;try{await navigator.clipboard.writeText(email);button.classList.add("copied");button.setAttribute("aria-label","Email copied");setTimeout(()=>{button.classList.remove("copied");button.setAttribute("aria-label","Copy administrator email")},1500)}catch{loginNotice("Could not copy the address. Select it and copy manually.")}});
-$("logout").addEventListener("click",async()=>{busy($("logout"),true,"Signing out…");try{await fetch("/auth/logout",{method:"POST"})}finally{location.reload()}});
+$("ssh-key-form").addEventListener("submit",async event=>{event.preventDefault();const notice=$("ssh-key-notice");notice.classList.add("hidden");busy($("ssh-key-submit"),true,"Saving…");try{await api("/me/ssh-key",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({public_key:$("ssh-key-input").value})});const{data}=await api("/me");showApp(data)}catch(error){notice.textContent=error.message;notice.classList.remove("hidden")}finally{busy($("ssh-key-submit"),false)}});
+$("claim-form").addEventListener("submit",async event=>{event.preventDefault();const notice=$("claim-notice");notice.classList.add("hidden");busy($("claim-submit"),true,"Joining…");try{const token=location.pathname.split("/").pop();await api(`/auth/claim/${token}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({handle:$("claim-handle").value.trim(),public_key:$("claim-key").value})});history.replaceState({},"", "/");const{data}=await api("/me");showApp(data)}catch(error){notice.textContent=error.message;notice.classList.remove("hidden")}finally{busy($("claim-submit"),false)}});
+$("logout").addEventListener("click",async()=>{busy($("logout"),true,"Signing out…");try{await fetch("/auth/logout",{method:"POST"})}finally{location.href="/"}});
 $("keep-reservation").addEventListener("click",()=>$("cancel-dialog").close());$("confirm-cancel").addEventListener("click",async()=>{const button=$("confirm-cancel");busy(button,true,"Cancelling…");try{await api(`/reservations/${state.cancelEvent.id}`,{method:"DELETE"});$("cancel-dialog").close();announce("Reservation cancelled","The time is available again.","success");await loadReservations(true)}catch(error){announce("Cancellation failed",error.message,"error")}finally{busy(button,false)}});
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&state.user)loadReservations(true)});
-(async()=>{try{const{data}=await api("/me");showApp(data)}catch{showLogin();$("email").focus()}})();
+(async()=>{
+  const claimToken=(location.pathname.match(/^\/claim\/([^/]+)$/)||[])[1];
+  try{
+    const meta=await fetch("/meta").then(r=>r.json());
+    if(meta.mode==="personal")$("login-copy").textContent="Personal mode uses a share link from the GPU owner. Institute email login is for Lab mode.";
+  }catch{}
+  if(claimToken){
+    $("login").classList.add("hidden");$("claim").classList.remove("hidden");
+    try{const{data}=await api(`/auth/claim/${claimToken}`);$("claim-handle").value=data.handle||""}catch(error){$("claim-notice").textContent=error.message;$("claim-notice").classList.remove("hidden")}
+    $("claim-handle").focus();
+    return;
+  }
+  try{const{data}=await api("/me");showApp(data)}catch{showLogin();$("email").focus()}
+})();

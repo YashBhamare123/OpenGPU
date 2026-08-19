@@ -9,17 +9,18 @@
  ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝      ╚═════╝
 ```
 
-OpenGPU is a self-hosted reservation service for sharing one NVIDIA GPU over SSH. Approved users sign in with an emailed one-time code, inspect availability, reserve a session, and receive reservation-specific SSH credentials. PostgreSQL is the source of truth; a dedicated scheduler reconciles reservations into disposable Docker containers.
+OpenGPU is a self-hosted reservation service for sharing one NVIDIA GPU over SSH. It has two onboarding modes: **Lab** (institutional email OTP) and **Personal** (Tailscale Funnel claim links). In both modes users add an SSH public key; OpenGPU installs that key when a reservation starts and never generates SSH passwords. PostgreSQL is the source of truth; a dedicated scheduler reconciles reservations into disposable Docker containers.
 
 The current deployment profile is an NVIDIA A6000 with 48 GB VRAM, CUDA 12.8, 16 CPU cores, and 32 GB RAM per user container.
 
 ## What it does
 
-- Email allowlist and one-time-code authentication
+- Lab mode: email allowlist and one-time-code authentication
+- Personal mode: time-limited claim links (`opengpu share alice`) over Tailscale Funnel
+- SSH public keys installed at reservation start (no generated passwords)
 - View-only horizontal availability timeline
 - Conflict-safe, idempotent reservations with an environment-configured standard duration limit
 - One current or future reservation per user
-- Fresh SSH password for every reservation
 - GPU container start and removal tied to reservation state
 - Persistent, size-capped bind-mounted `/workspace` (ext4 image) and SSH host keys
 - Audit events, provisioning retries, and scheduler health reporting
@@ -78,6 +79,7 @@ Use `./start.sh --tunnel` only when `NGROK_DOMAIN`, the ngrok account, and `ALLO
 ## Documentation
 
 - [Architecture and lifecycle](docs/architecture.md)
+- [Onboarding (Lab and Personal)](docs/onboarding.md)
 - [Development guide](docs/development.md)
 - [Frontend](docs/frontend.md)
 - [Backend and API behavior](docs/backend.md)

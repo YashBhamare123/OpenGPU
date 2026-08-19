@@ -1,9 +1,11 @@
 import pytest
 
 from security import (
+    InvalidHandle,
     InvalidSshPublicKey,
     hash_secret,
     normalize_email,
+    normalize_handle,
     parse_ssh_public_key,
     ssh_key_public_view,
     ssh_public_key_fingerprint,
@@ -13,6 +15,14 @@ from security import (
 
 def test_email_normalization():
     assert normalize_email(" User@IITI.AC.IN ") == "user@iiti.ac.in"
+
+
+def test_handle_normalization():
+    assert normalize_handle(" Alice_1 ") == "alice_1"
+    with pytest.raises(InvalidHandle):
+        normalize_handle("1alice")
+    with pytest.raises(InvalidHandle):
+        normalize_handle("bad handle")
 
 
 def test_secret_hash_is_not_recoverable_plaintext():

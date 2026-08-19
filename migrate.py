@@ -73,11 +73,16 @@ def _apply_sql(conn, path: Path) -> None:
 
 
 def schema_matches_init(conn) -> bool:
-    return {"ssh_password_hash", "ssh_public_key", "provisioning_state", "volume_name"} <= _columns(conn, "teams") and {
-        "duration_override",
-        "workspace_gb",
-        "temp_storage_gb",
-    } <= _columns(conn, "reservations")
+    return (
+        {"ssh_password_hash", "ssh_public_key", "handle", "provisioning_state", "volume_name"} <= _columns(conn, "teams")
+        and {
+            "duration_override",
+            "workspace_gb",
+            "temp_storage_gb",
+        }
+        <= _columns(conn, "reservations")
+        and _has_relation(conn, "share_claims")
+    )
 
 
 def migrate() -> int:

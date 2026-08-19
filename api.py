@@ -1,5 +1,6 @@
 import hmac
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from html import escape
 from typing import Annotated
@@ -85,6 +86,22 @@ class SshKeyRequest(BaseModel):
     public_key: str
 
 
+class ClaimRequest(BaseModel):
+    handle: str
+    public_key: str
+
+
+def self_booking_enabled() -> bool:
+    return smtp_enabled() or settings.mode == "personal"
+
+
+def advertised_ssh() -> tuple[str, int]:
+    host = os.environ.get("OPENGPU_SSH_HOST", "").strip() or settings.server_ip
+    advertised = os.environ.get("OPENGPU_SSH_PORT", "").strip()
+    port = int(advertised) if advertised else settings.ssh_public_port
+    return host, port
+
+
 def audit(cursor, event_type: str, team_id=None, details=None) -> None:
     cursor.execute(
         "INSERT INTO audit_events(team_id,event_type,details) VALUES (%s,%s,%s::jsonb)",
@@ -120,7 +137,7 @@ def current_user(session: str | None = Cookie(default=None)) -> dict:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT t.id,t.email,t.name,t.display_name,t.enabled,t.provisioning_state,t.ssh_public_key
+                SELECT t.id,t.email,t.name,t.display_name,t.enabled,t.provisioning_state,t.ssh_public_key,t.handle
                 FROM sessions s JOIN teams t ON t.id=s.team_id
                 WHERE s.token_hash=%s AND s.revoked_at IS NULL AND s.expires_at>NOW()
                 """,
@@ -129,12 +146,20 @@ def current_user(session: str | None = Cookie(default=None)) -> dict:
             row = cursor.fetchone()
         if not row or not row[4]:
             raise HTTPException(status_code=401, detail="Session is invalid or expired")
-        email = str(row[1])
-        return {"id": row[0], "email": email, "username": row[2],
-                "display_name": row[3], "provisioning_state": row[5],
+        email = str(row[1]) if row[1] else ""
+        handle = str(row[7]) if row[7] else ""
+        ssh_host, ssh_port = advertised_ssh()
+        username = row[2] or handle or f"gpu{row[0]}"
+        return {"id": row[0], "email": email or None, "username": username,
+                "handle": handle or None,
+                "display_name": row[3] or handle or email,
+                "provisioning_state": row[5],
                 "ssh_key": ssh_key_public_view(row[6]),
-                "is_admin": normalize_email(email) in settings.admin_emails,
-                "self_booking": smtp_enabled()}
+                "is_admin": bool(email) and normalize_email(email) in settings.admin_emails,
+                "self_booking": self_booking_enabled(),
+                "mode": settings.mode,
+                "ssh_host": ssh_host,
+                "ssh_port": ssh_port}
     finally:
         conn.close()
 
@@ -163,9 +188,27 @@ def admin_frontend():
 
 
 def require_admin(user: Annotated[dict, Depends(current_user)]) -> dict:
-    if normalize_email(user["email"]) not in settings.admin_emails:
+    email = user.get("email") or ""
+    if not email or normalize_email(email) not in settings.admin_emails:
         raise HTTPException(status_code=403, detail="Administrator access required")
     return user
+
+
+@app.get("/meta")
+def meta():
+    ssh_host, ssh_port = advertised_ssh()
+    return {
+        "mode": settings.mode,
+        "self_booking": self_booking_enabled(),
+        "contact": settings.access_contact_email or None,
+        "ssh_host": ssh_host,
+        "ssh_port": ssh_port,
+    }
+
+
+@app.get("/claim/{token}", response_class=HTMLResponse)
+def claim_frontend(token: str, request: Request):
+    return frontend(request)
 
 
 @app.post("/auth/request-code", status_code=202)
@@ -256,6 +299,29 @@ def logout(response: Response, session: str | None = Cookie(default=None)):
     response.delete_cookie("session")
 
 
+@app.get("/auth/claim/{token}")
+def claim_status(token: str):
+    from share import claim_preview
+
+    preview = claim_preview(token)
+    if not preview:
+        raise HTTPException(status_code=404, detail="This invite is invalid or has expired")
+    return preview
+
+
+@app.post("/auth/claim/{token}")
+def claim_invite(token: str, request: ClaimRequest, response: Response):
+    from share import consume_claim
+
+    try:
+        _user_id, session = consume_claim(token, request.handle, request.public_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    response.set_cookie("session", session, max_age=settings.session_hours * 3600,
+                        httponly=True, secure=settings.cookie_secure, samesite="lax")
+    return {"authenticated": True}
+
+
 @app.get("/me")
 def me(user: Annotated[dict, Depends(current_user)]):
     return {**user, "reservation_limit_minutes": settings.reservation_limit_minutes}
@@ -314,13 +380,14 @@ def admin_users(_admin: Annotated[dict, Depends(require_admin)]):
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                """SELECT id,email,name,display_name,provisioning_state,enabled,ssh_public_key
-                   FROM teams ORDER BY email"""
+                """SELECT id,email,name,display_name,provisioning_state,enabled,ssh_public_key,handle
+                   FROM teams ORDER BY COALESCE(email, handle)"""
             )
             rows = cursor.fetchall()
-        return [{"id": row[0], "email": str(row[1]), "username": row[2],
+        return [{"id": row[0], "email": str(row[1]) if row[1] else None, "username": row[2],
                  "display_name": row[3], "provisioning_state": row[4],
-                 "enabled": row[5], "ssh_key": ssh_key_public_view(row[6])} for row in rows]
+                 "enabled": row[5], "ssh_key": ssh_key_public_view(row[6]),
+                 "handle": str(row[7]) if row[7] else None} for row in rows]
     finally:
         conn.close()
 
@@ -353,9 +420,9 @@ def admin_whitelist_user(request: AdminUserRequest, admin: Annotated[dict, Depen
                 user_id = cursor.fetchone()[0]
                 username = f"gpu{user_id}"
                 cursor.execute(
-                    """INSERT INTO teams(id,name,email,display_name,enabled,provisioning_state)
-                       VALUES (%s,%s,%s,%s,TRUE,'unprovisioned')""",
-                    (user_id, username, email, display_name),
+                    """INSERT INTO teams(id,name,email,handle,display_name,enabled,provisioning_state)
+                       VALUES (%s,%s,%s,%s,%s,TRUE,'unprovisioned')""",
+                    (user_id, username, email, username, display_name),
                 )
                 saved_name = display_name
                 provisioning_state = "unprovisioned"
@@ -492,7 +559,7 @@ def admin_create_reservation(request: AdminReservationRequest, admin: Annotated[
                        "duration_override": request.allow_extended,
                        "workspace_gb": request.workspace_gb, "temp_storage_gb": request.temp_storage_gb}
             audit(cursor, "reservation_created", target_id, details)
-            audit(cursor, "credential_rotation_requested", target_id, details)
+            audit(cursor, "ssh_key_install_requested", target_id, details)
         conn.commit()
         return {"id": row[0], "start_time": row[1], "end_time": row[2]}
     except HTTPException:
@@ -542,7 +609,7 @@ def admin_cancel_reservation(reservation_id: int, admin: Annotated[dict, Depends
 @app.post("/reservations")
 def create_reservation(request: ReservationRequest, user: Annotated[dict, Depends(current_user)],
                        idempotency_key: str = Header(min_length=8, max_length=128)):
-    if not smtp_enabled():
+    if not self_booking_enabled():
         raise HTTPException(
             status_code=403,
             detail="Self-service booking is disabled without email. An administrator must book this GPU.",
@@ -556,6 +623,8 @@ def create_reservation(request: ReservationRequest, user: Annotated[dict, Depend
             status_code=400,
             detail=f"Reservations can be up to {settings.reservation_limit_minutes} minutes",
         )
+    if not user.get("ssh_key"):
+        raise HTTPException(status_code=400, detail="Add an SSH public key before booking")
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
@@ -591,7 +660,7 @@ def create_reservation(request: ReservationRequest, user: Annotated[dict, Depend
                 (user["id"],),
             )
             audit(cursor, "reservation_created", user["id"], {"reservation_id": row[0]})
-            audit(cursor, "credential_rotation_requested", user["id"], {"reservation_id": row[0]})
+            audit(cursor, "ssh_key_install_requested", user["id"], {"reservation_id": row[0]})
         conn.commit()
         return {"id": row[0], "start_time": row[1], "end_time": row[2]}
     except HTTPException:
@@ -627,7 +696,8 @@ def cancel_reservation(reservation_id: int, user: Annotated[dict, Depends(curren
             audit(cursor, "reservation_cancelled", user["id"], {"reservation_id": reservation_id})
         conn.commit()
         try:
-            deliver_cancellation(user["email"], row[1], row[2])
+            if user.get("email"):
+                deliver_cancellation(user["email"], row[1], row[2])
         except Exception:  # noqa: BLE001, S110
             # Cancellation is authoritative even if the SMTP relay is unavailable.
             pass

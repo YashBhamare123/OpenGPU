@@ -25,10 +25,12 @@ REQUIRED_TABLES = {
     "provisioning_jobs",
     "audit_events",
     "service_heartbeats",
+    "share_claims",
 }
 REQUIRED_TEAM_COLUMNS = {
     "ssh_password_hash",
     "ssh_public_key",
+    "handle",
     "provisioning_state",
     "volume_name",
     "legacy_volume",
@@ -98,11 +100,13 @@ def check_nvidia() -> Check:
 
 
 def check_smtp() -> Check:
+    if settings.mode == "personal":
+        return Check("smtp", True, "Personal mode does not use SMTP")
     if not settings.smtp_host or not settings.smtp_from:
         return Check(
             "smtp",
             False,
-            "email disabled; only administrators can book, and SSH passwords print on this terminal",
+            "email disabled; only administrators can book until SMTP is configured",
             fatal=False,
         )
     try:
@@ -235,8 +239,27 @@ def enable_cpu_only() -> None:
 def prompt_cpu_only(*, input_fn=input) -> bool:
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return False
-    answer = input_fn("NVIDIA was not detected. Run CPU-only with the opengpu:cpu image? [y/N] ")
-    return str(answer or "").strip().lower() in {"y", "yes"}
+    from ui import ask_choice
+
+    def wrapped(prompt: str) -> str:
+        answer = str(input_fn(prompt) or "").strip().lower()
+        if answer in {"y", "yes"}:
+            return "cpu"
+        if answer in {"n", "no"}:
+            return "abort"
+        return answer
+
+    picked = ask_choice(
+        "NVIDIA GPU",
+        "No NVIDIA driver or nvidia-container-toolkit was found.",
+        [
+            ("abort", "Stop setup", "Install NVIDIA, then rerun opengpu doctor"),
+            ("cpu", "Continue CPU-only", "User containers will not request a GPU"),
+        ],
+        default=0,
+        input_fn=wrapped,
+    )
+    return picked == "cpu"
 
 
 def ensure_image() -> Check:
@@ -275,6 +298,24 @@ def check_image() -> Check:
 
 
 def check_remote_access() -> Check:
+    if settings.mode == "personal":
+        from tailscale import available, logged_in
+
+        if not available():
+            return Check(
+                "remote-access",
+                False,
+                "tailscale is not on PATH; install Tailscale to share the GPU over Funnel",
+                fatal=False,
+            )
+        if not logged_in():
+            return Check(
+                "remote-access",
+                False,
+                "Tailscale is installed but not logged in. Run: tailscale login",
+                fatal=False,
+            )
+        return Check("remote-access", True, "Tailscale is logged in")
     from tunnel import configure_agent, ngrok_token
 
     token = ngrok_token()
@@ -312,19 +353,15 @@ def collect_checks() -> list[Check]:
 
 
 def format_report(checks: list[Check]) -> str:
-    lines = []
-    for check in checks:
-        if check.ok:
-            status = "ok  "
-        elif check.fatal:
-            status = "fail"
-        else:
-            status = "warn"
-        lines.append(f"{status}  {check.name}: {check.detail}")
-    return "\n".join(lines)
+    from ui import format_checks
+
+    return format_checks(checks)
 
 
 def doctor(*, cpu: bool = False, input_fn=input) -> int:
+    from ui import print_banner
+
+    print_banner()
     if cpu and not cpu_only():
         enable_cpu_only()
         print("CPU-only mode enabled. User containers will not request a GPU.", flush=True)
@@ -362,6 +399,9 @@ def setup(
     from envfile import apply_env, configure_env, default_env_path, parse_env, write_env
     from localdb import ensure_local_postgres
     from tunnel import configure_agent, persist_token
+    from ui import print_banner
+
+    print_banner()
 
     path = Path(env_file).expanduser() if env_file else default_env_path()
     chosen: dict[str, str] = {}
@@ -402,6 +442,21 @@ def setup(
                     print(f"  {key} set")
             print("  DATABASE_URL set")
             token = token or chosen.get("NGROK_AUTHTOKEN") or chosen.get("NGROK_TOKEN") or None
+            if chosen.get("OPENGPU_MODE") == "personal":
+                try:
+                    from tailscale import apply_funnel_env, configure_funnel
+
+                    funnel = configure_funnel(
+                        api_port=int(chosen.get("API_PORT") or os.environ.get("API_PORT") or "9473"),
+                        ssh_port=int(chosen.get("SSH_PUBLIC_PORT") or os.environ.get("SSH_PUBLIC_PORT") or "9474"),
+                    )
+                    extras.update(apply_funnel_env(funnel))
+                    chosen.update(extras)
+                    write_env(path, chosen, {key: value for key, value in extras.items() if key not in chosen})
+                    apply_env(chosen)
+                    print(f"Tailscale Funnel: {funnel.get('ui_url') or 'enabled'}")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"Tailscale Funnel was not enabled: {exc}", file=sys.stderr)
     if not skip_helper:
         status = init_host()
         if status != 0:
@@ -431,30 +486,36 @@ def setup(
     return 0
 
 
-def serve(*, host: str, port: int, tunnel: bool = False) -> None:
+def serve(*, host: str, port: int, tunnel: bool = False, scheduler: bool = True, pull_image: bool = True) -> None:
     import threading
 
     import uvicorn
 
     from gateway import serve_gateway
-    from scheduler import run as run_scheduler
+    from ui import panel, print_banner
 
-    image = ensure_image()
-    if not image.ok:
-        print(f"fail  image: {image.detail}", file=sys.stderr)
-        raise SystemExit(1)
+    print_banner()
+
+    if pull_image:
+        image = ensure_image()
+        if not image.ok:
+            print(f"fail  image: {image.detail}", file=sys.stderr)
+            raise SystemExit(1)
 
     stop = threading.Event()
     workers: list[threading.Thread] = []
     ngrok = None
 
-    def scheduler_worker() -> None:
-        try:
-            run_scheduler()
-        finally:
-            stop.set()
+    if scheduler:
+        from scheduler import run as run_scheduler
 
-    workers.append(threading.Thread(target=scheduler_worker, name="scheduler", daemon=True))
+        def scheduler_worker() -> None:
+            try:
+                run_scheduler()
+            finally:
+                stop.set()
+
+        workers.append(threading.Thread(target=scheduler_worker, name="scheduler", daemon=True))
     workers.append(threading.Thread(target=serve_gateway, args=(stop,), name="ssh-gateway", daemon=True))
     for worker in workers:
         worker.start()
@@ -475,6 +536,17 @@ def serve(*, host: str, port: int, tunnel: bool = False) -> None:
 
     print(f"SSH gateway: {settings.ssh_gateway_bind}:{settings.ssh_public_port}", flush=True)
     print(f"API: http://{host}:{port}", flush=True)
+    print(
+        panel(
+            "OpenGPU",
+            [
+                f"mode  {settings.mode}",
+                f"ui    http://{host}:{port}",
+                f"ssh   {settings.ssh_gateway_bind}:{settings.ssh_public_port}",
+            ],
+        ),
+        flush=True,
+    )
 
     try:
         uvicorn.run("api:app", host=host, port=port)

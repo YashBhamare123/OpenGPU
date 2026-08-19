@@ -23,7 +23,7 @@ flowchart LR
 - PostgreSQL enforces reservation rules and coordinates concurrent API and scheduler workers.
 - The scheduler is the only application process that needs Docker access.
 - Docker runs one labelled GPU container for the active reservation.
-- SMTP delivers login codes and reservation-specific SSH credentials when configured. Without SMTP, only administrators can book or sign in; SSH passwords and admin login codes print on the `opengpu serve` terminal.
+- SMTP delivers login codes in Lab mode when configured. Personal mode admits users through claim links and does not use SMTP.
 
 ## Authentication and booking
 
@@ -32,7 +32,7 @@ flowchart LR
 3. The browser loads `/me` and future reservations. Other users' reservation IDs are withheld.
 4. The first booking attempt for an unprovisioned user queues initial provisioning and returns `202`.
 5. After provisioning becomes `ready`, the user submits the booking again with an idempotency key.
-6. PostgreSQL inserts the reservation and queues reservation provisioning, which rotates the SSH password and emails the new credentials, or prints them on the host when SMTP is skipped.
+6. PostgreSQL inserts the reservation and queues reservation provisioning, which installs the user's SSH public key.
 
 ## Reservation lifecycle
 
@@ -60,7 +60,7 @@ Future reservations retain their pre-provisioned stopped container. At the start
 ## Failure behavior
 
 - Provisioning failures become retryable after one minute and are visible through `teams.provisioning_state`.
-- SMTP failure during credential delivery removes the incomplete container because plaintext passwords are never retained.
+- SMTP failure does not roll back a committed reservation. SSH access uses stored public keys rather than emailed passwords.
 - A stale scheduler heartbeat or a recorded reconciliation error makes readiness return `503`.
 - If the scheduler leadership connection dies, the process exits instead of running without the lock.
 - Unmanaged containers and incorrectly owned storage volumes are rejected rather than silently adopted.

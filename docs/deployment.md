@@ -7,7 +7,7 @@ This is a minimal deployment reference for contributors and small internal insta
 - Linux host with Docker Engine. NVIDIA driver and NVIDIA Container Toolkit are required for GPU reservations; `opengpu doctor` can switch the host to CPU-only mode instead.
 - PostgreSQL 15 or newer with permission to create `btree_gist` and `citext`
 - Python 3.10 or newer
-- SMTP relay with STARTTLS, or skip SMTP during setup to print login codes and SSH passwords on the host
+- SMTP relay with STARTTLS for Lab mode, or Tailscale for Personal mode
 - Private network address for published SSH ports
 - HTTPS reverse proxy, or configured ngrok tunnel for development
 - Absolute `WORKSPACE_ROOT` with enough free space for sparse workspace and scratch images (loop mounts; XFS project quotas are not required)
@@ -24,7 +24,7 @@ opengpu doctor
 opengpu serve
 ```
 
-`opengpu setup` writes a mode-600 `.env`. It asks for admin emails, optional SMTP, and a public contact address. Host CPU, memory, NVIDIA, ports, bind addresses, and browser origins are detected automatically. Skip SMTP to run without email: only administrators can book, login codes for admins print on the host terminal, and SSH passwords print there for sharing. Compose starts Postgres and writes `DATABASE_URL` without printing the password.
+`opengpu setup` writes a mode-600 `.env`. Each question is a separate page with the OpenGPU wordmark at the top. Choose Lab vs Personal, SMTP, HTTPS cookies, and GPU vs CPU from numbered options; host CPU, memory, ports, bind addresses, and browser origins are detected automatically. After upgrade, run `opengpu migrate` so `teams.handle` and `share_claims` exist before `opengpu doctor` or the API start.
 
 `scripts/configure-docker-storage-backend` is not required for these virtual-disk caps; it only forces Docker onto overlay2 and is optional. Reservations default to a 2 GB persistent workspace and 100 GB scratch disk for `/home`, `/tmp`, and a writable `/etc` copy; administrators can adjust both up to a combined 200 GB. The container root filesystem is read-only so users cannot fill the Docker overlay. The helper owns image creation and loop mounts; the scheduler account does not need general write access to `WORKSPACE_ROOT`.
 
@@ -79,6 +79,16 @@ curl -fsS http://127.0.0.1:9473/health/ready
 ```
 
 Adjust the address if `API_HOST` is not localhost. The default API port is `9473` and the SSH gateway is `9474`; setup picks the next free port if either is taken.
+
+## systemd
+
+`deploy/aiml-gpu-api.service` and `deploy/aiml-gpu-scheduler.service` are the production split:
+
+- The API unit runs `opengpu api` (FastAPI plus the SSH gateway). That process has no Docker access and must not start the scheduler.
+- The scheduler unit runs `opengpu scheduler` as the Docker-capable account.
+- `opengpu serve` remains the local all-in-one command (API, scheduler, and gateway in one process). Do not point the API unit at `serve`, or the two units will contest the scheduler advisory lock.
+
+The API unit listens on `127.0.0.1:9473`. Point the reverse proxy or Tailscale Funnel at that port, and keep `API_PORT=9473` in the environment file. Existing installs that still proxy port `8000` should change the unit `--port` or the proxy together.
 
 ## Administration
 

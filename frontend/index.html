@@ -23,8 +23,8 @@
   <meta name="twitter:image" content="__PUBLIC_URL__/social-card.png?v=2">
   <link rel="icon" href="/frontend/favicon.svg?v=2" type="image/svg+xml">
   <script src="/frontend/theme.js?v=1"></script>
-  <link rel="stylesheet" href="/frontend/app.css?v=52">
-  <script src="/frontend/app.js?v=31" defer></script>
+  <link rel="stylesheet" href="/frontend/app.css?v=53">
+  <script src="/frontend/app.js?v=32" defer></script>
 </head>
 <body>
   <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Use dark mode" title="Use dark mode" aria-pressed="false"><svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.2A8.4 8.4 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"/></svg><svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"/></svg></button>
@@ -40,7 +40,7 @@
     <section id="login" class="login-panel">
       <div class="eyebrow">Cynaptics OpenGPU</div>
       <h1>Sign in</h1>
-      <p>Use your approved institute email.</p>
+      <p id="login-copy">Use your approved institute email.</p>
       <div id="login-notice" class="form-notice hidden" role="alert"></div>
       <form id="email-form" class="form-stack">
         <label for="email">Email address</label>
@@ -59,6 +59,32 @@
         <button id="retry-access" class="button secondary" type="button">Use another email</button>
         <div id="contact-admin-row" class="contact-admin-row hidden"><span>Contact</span><span id="contact-admin"></span><button id="copy-admin-email" class="copy-email" type="button" aria-label="Copy administrator email" title="Copy email"><svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20 6-11 11-5-5"/></svg></button></div>
       </div>
+    </section>
+
+    <section id="claim" class="login-panel hidden">
+      <div class="eyebrow">Cynaptics OpenGPU</div>
+      <h1>Join this GPU</h1>
+      <p>Choose a handle and paste your SSH public key. This browser will remember you.</p>
+      <div id="claim-notice" class="form-notice hidden" role="alert"></div>
+      <form id="claim-form" class="form-stack">
+        <label for="claim-handle">Handle</label>
+        <input id="claim-handle" autocomplete="username" placeholder="alice" required>
+        <label for="claim-key">SSH public key</label>
+        <textarea id="claim-key" rows="4" spellcheck="false" placeholder="ssh-ed25519 AAAA… comment" required></textarea>
+        <button id="claim-submit" class="button primary" type="submit">Continue</button>
+      </form>
+    </section>
+
+    <section id="ssh-key" class="login-panel hidden">
+      <div class="eyebrow">Cynaptics OpenGPU</div>
+      <h1>Add your SSH key</h1>
+      <p>OpenGPU installs this public key into your container when a reservation starts. It never creates SSH passwords.</p>
+      <div id="ssh-key-notice" class="form-notice hidden" role="alert"></div>
+      <form id="ssh-key-form" class="form-stack">
+        <label for="ssh-key-input">SSH public key</label>
+        <textarea id="ssh-key-input" rows="4" spellcheck="false" placeholder="ssh-ed25519 AAAA… comment" required></textarea>
+        <button id="ssh-key-submit" class="button primary" type="submit">Save key</button>
+      </form>
     </section>
 
     <section id="workspace" class="workspace hidden">

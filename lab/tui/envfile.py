@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from paths import ROOT
+from paths import LAB_ROOT
 
 SKIP_ANSWERS = {"", "skip", "none", "-"}
 
@@ -45,7 +45,6 @@ FIELDS: tuple[EnvField, ...] = (
     EnvField("SSH_PORT_END", "Last published container SSH port", default="32000"),
     EnvField("API_HOST", "API listen address", default="127.0.0.1"),
     EnvField("API_PORT", "API listen port", default="9473"),
-    EnvField("CLAIM_HOURS", "Personal-mode claim link lifetime", default="72"),
     EnvField("SESSION_HOURS", "Browser session length", default="12"),
     EnvField("OTP_MINUTES", "Login code lifetime", default="10"),
     EnvField("OTP_MAX_ATTEMPTS", "Login code attempts", default="5"),
@@ -62,20 +61,10 @@ FIELDS: tuple[EnvField, ...] = (
 
 
 def default_env_path() -> Path:
-    specified = os.environ.get("OPENGPU_ENV_FILE", "").strip()
+    specified = os.environ.get("OPENGPU_LAB_ENV_FILE", "").strip() or os.environ.get("OPENGPU_ENV_FILE", "").strip()
     if specified:
         return Path(specified).expanduser()
-    candidates = (
-        Path.cwd() / ".env",
-        ROOT / ".env",
-        Path.home() / ".config/opengpu/env",
-    )
-    for path in candidates:
-        if path.is_file():
-            return path
-    if "site-packages" in Path(ROOT).parts:
-        return Path.home() / ".config/opengpu/env"
-    return Path.cwd() / ".env"
+    return LAB_ROOT / ".lab.env"
 
 
 def parse_env(path: Path) -> dict[str, str]:
@@ -222,11 +211,11 @@ def _prompt_smtp(*, existing: dict[str, str], input_fn, getpass_fn) -> dict[str,
 
     current_host = existing.get("SMTP_HOST") or os.environ.get("SMTP_HOST", "")
     action = ask_choice(
-        "Lab email",
-        "Login codes are emailed to allowlisted addresses. Skip SMTP to print admin codes on the host only.",
+        "Sign-in emails",
+        "OpenGPU emails a short code when someone signs in.",
         [
-            ("smtp", "Configure SMTP", "Gmail, Microsoft 365, or a campus relay"),
-            ("skip", "Skip SMTP", "Admins can still sign in; codes print on this machine"),
+            ("smtp", "Send email", "Gmail, Outlook, or your mail server"),
+            ("skip", "Skip for now", "Codes appear on this computer instead"),
         ],
         default=0 if current_host else 1,
         input_fn=input_fn,
@@ -234,12 +223,12 @@ def _prompt_smtp(*, existing: dict[str, str], input_fn, getpass_fn) -> dict[str,
     if action == "skip":
         return {}
     provider = ask_choice(
-        "SMTP provider",
-        "OpenGPU sends mail with STARTTLS. App passwords are stored only in the local .env file.",
+        "Email provider",
+        "This is only used to send sign-in codes.",
         [
-            ("gmail", "Gmail", "smtp.gmail.com:587"),
-            ("outlook", "Microsoft 365 / Outlook", "smtp.office365.com:587"),
-            ("custom", "Custom relay", "You will enter the hostname"),
+            ("gmail", "Gmail", ""),
+            ("outlook", "Outlook", ""),
+            ("custom", "Something else", "You'll enter the server name"),
         ],
         default=_option_index(
             [("gmail", "", ""), ("outlook", "", ""), ("custom", "", "")],
@@ -257,8 +246,8 @@ def _prompt_smtp(*, existing: dict[str, str], input_fn, getpass_fn) -> dict[str,
         values["SMTP_PORT"] = "587"
     else:
         host = ask_text(
-            "SMTP hostname",
-            "Hostname of the STARTTLS relay.",
+            "Mail server",
+            "The server name from your email provider.",
             default=current_host,
             required=True,
             input_fn=input_fn,
@@ -266,8 +255,8 @@ def _prompt_smtp(*, existing: dict[str, str], input_fn, getpass_fn) -> dict[str,
         )
         values["SMTP_HOST"] = host or current_host
         port = ask_text(
-            "SMTP port",
-            "Usually 587 for STARTTLS.",
+            "Mail port",
+            "Usually 587.",
             default=existing.get("SMTP_PORT") or os.environ.get("SMTP_PORT", "") or "587",
             required=True,
             input_fn=input_fn,
@@ -276,7 +265,7 @@ def _prompt_smtp(*, existing: dict[str, str], input_fn, getpass_fn) -> dict[str,
         values["SMTP_PORT"] = port or "587"
     sender = ask_text(
         "From address",
-        "Shown on login emails. Often the same as the SMTP username.",
+        "People will see this as the sender.",
         default=existing.get("SMTP_FROM") or os.environ.get("SMTP_FROM", ""),
         required=True,
         input_fn=input_fn,
@@ -284,8 +273,8 @@ def _prompt_smtp(*, existing: dict[str, str], input_fn, getpass_fn) -> dict[str,
     )
     values["SMTP_FROM"] = sender or ""
     user = ask_text(
-        "SMTP username",
-        "Leave blank if the relay does not require authentication.",
+        "Username",
+        "Leave blank if your provider doesn't need one.",
         default=existing.get("SMTP_USER") or os.environ.get("SMTP_USER", ""),
         required=False,
         input_fn=input_fn,
@@ -294,10 +283,10 @@ def _prompt_smtp(*, existing: dict[str, str], input_fn, getpass_fn) -> dict[str,
     if user:
         values["SMTP_USER"] = user
     password = ask_text(
-        "SMTP password",
-        "App password or relay secret. Input is hidden.",
+        "App password",
+        "Gmail and Outlook need an app password, not your normal password. Hidden as you type.",
         default="",
-        required=False,
+        required=True,
         secret=True,
         input_fn=input_fn,
         getpass_fn=getpass_fn,
@@ -314,19 +303,18 @@ def _prompt_wizard(
     input_fn,
     getpass_fn,
 ) -> dict[str, str]:
-    from detect import cookie_secure_for, nvidia_available
     from ui import ask_choice, ask_text
 
     chosen: dict[str, str] = {}
     _autofill(existing, detected, chosen)
     mode_options = [
-        ("lab", "Lab", "Institute email allowlist and one-time login codes"),
-        ("personal", "Personal", "Claim links over Tailscale Funnel"),
+        ("lab", "A lab", "People sign in with their email"),
+        ("personal", "Just you", "Share access with a link"),
     ]
     current_mode = existing.get("OPENGPU_MODE") or os.environ.get("OPENGPU_MODE", "") or "lab"
     chosen["OPENGPU_MODE"] = ask_choice(
-        "Onboarding mode",
-        "Same GPU scheduler either way. This only changes how people are admitted.",
+        "Who is this for?",
+        "You can change this later.",
         mode_options,
         default=_option_index(mode_options, current_mode),
         input_fn=input_fn,
@@ -342,14 +330,16 @@ def _prompt_wizard(
             "ACCESS_CONTACT_EMAIL",
         ):
             chosen.pop(key, None)
+        sharing = _ensure_tailscale(input_fn=input_fn)
+        chosen["COOKIE_SECURE"] = "true" if sharing == "funnel" else "false"
     else:
         smtp = _prompt_smtp(existing=existing, input_fn=input_fn, getpass_fn=getpass_fn)
         for key in ("SMTP_HOST", "SMTP_PORT", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD"):
             chosen.pop(key, None)
         chosen.update(smtp)
         admins = ask_text(
-            "Administrator emails",
-            "Comma-separated. These addresses can manage users and receive host-printed login codes if SMTP is skipped.",
+            "Admins",
+            "Who can manage OpenGPU? Separate multiple emails with commas.",
             default=existing.get("ADMIN_EMAILS") or os.environ.get("ADMIN_EMAILS", ""),
             required=True,
             input_fn=input_fn,
@@ -361,11 +351,11 @@ def _prompt_wizard(
             existing.get("ACCESS_CONTACT_EMAIL") or os.environ.get("ACCESS_CONTACT_EMAIL", "") or first_admin
         )
         contact_choice = ask_choice(
-            "Access-denied contact",
-            "Shown when someone who is not on the allowlist tries to sign in.",
+            "If someone can't get in",
+            "We'll show this email when access is denied.",
             [
-                ("admin", f"Use {first_admin}", "First administrator email"),
-                ("custom", "Different address", "You will type it next"),
+                ("admin", first_admin, ""),
+                ("custom", "A different email", ""),
             ],
             default=0 if current_contact == first_admin else 1,
             input_fn=input_fn,
@@ -373,7 +363,7 @@ def _prompt_wizard(
         if contact_choice == "custom":
             contact = ask_text(
                 "Contact email",
-                "Public address for access requests.",
+                "People will see this if they don't have access.",
                 default=current_contact,
                 required=True,
                 input_fn=input_fn,
@@ -382,34 +372,64 @@ def _prompt_wizard(
             chosen["ACCESS_CONTACT_EMAIL"] = contact or first_admin
         else:
             chosen["ACCESS_CONTACT_EMAIL"] = first_admin
-    origins = chosen.get("ALLOWED_ORIGINS") or detected.get("ALLOWED_ORIGINS") or ""
-    cookie_default = chosen.get("COOKIE_SECURE") or cookie_secure_for(origins)
-    if chosen["OPENGPU_MODE"] == "personal" and not (existing.get("COOKIE_SECURE") or os.environ.get("COOKIE_SECURE")):
-        cookie_default = "true"
-    cookie_options = [
-        ("false", "HTTP", "Local browser access without TLS"),
-        ("true", "HTTPS", "Tailscale Funnel, reverse proxy, or public HTTPS"),
-    ]
-    chosen["COOKIE_SECURE"] = ask_choice(
-        "Browser cookies",
-        "Use HTTPS whenever the UI is reached over TLS so session cookies stay Secure.",
-        cookie_options,
-        default=_option_index(cookie_options, cookie_default, 0),
-        input_fn=input_fn,
-    )
-    gpu_options = [
-        ("false", "NVIDIA GPU", "User containers request one GPU"),
-        ("true", "CPU-only", "No GPU device; uses the CPU image"),
-    ]
-    gpu_default = "true" if chosen.get("CPU_ONLY") == "true" or not nvidia_available() else "false"
-    chosen["CPU_ONLY"] = ask_choice(
-        "Accelerator",
-        "NVIDIA was detected." if nvidia_available() else "NVIDIA was not detected on this host.",
-        gpu_options,
-        default=_option_index(gpu_options, gpu_default),
+        chosen["COOKIE_SECURE"] = chosen.get("COOKIE_SECURE") or "false"
+    chosen["CPU_ONLY"] = _prompt_accelerator(
+        cpu_only=chosen.get("CPU_ONLY", ""),
         input_fn=input_fn,
     )
     return chosen
+
+
+def _prompt_accelerator(*, cpu_only: str, input_fn) -> str:
+    from detect import nvidia_available
+    from ui import ask_choice
+
+    if nvidia_available():
+        options = [
+            ("false", "Use the GPU", ""),
+            ("true", "CPU only", ""),
+        ]
+        return ask_choice(
+            "GPU",
+            "We found a GPU.",
+            options,
+            default=_option_index(options, cpu_only or "false"),
+            input_fn=input_fn,
+        )
+    ask_choice(
+        "GPU",
+        "We didn't find a GPU on this machine.",
+        [("true", "Continue with CPU only", "")],
+        default=0,
+        input_fn=input_fn,
+    )
+    return "true"
+
+
+def _ensure_tailscale(*, input_fn) -> str:
+    from tailscale import enable_sharing, logged_in, login_url
+    from ui import hold_page, print_page
+
+    if not logged_in():
+        result = hold_page(
+            "Sign in to Tailscale",
+            "Other people reach this machine through Tailscale.\nOpen this link:",
+            link=login_url,
+            ready=logged_in,
+            hint="We'll continue when you're signed in.",
+            input_fn=input_fn,
+            fallback_after=10,
+            fallback=(
+                "local",
+                "Having trouble",
+                "Use this computer or your network for now",
+            ),
+        )
+        if result == "local":
+            return "local"
+    print_page("Sharing", "Turning on Tailscale.")
+    enable_sharing()
+    return "funnel"
 
 
 def prompt_env(

@@ -2,6 +2,7 @@ import base64
 import binascii
 import hashlib
 import hmac
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -17,14 +18,26 @@ ALLOWED_SSH_KEY_TYPES = frozenset({
     "sk-ecdsa-sha2-nistp256@openssh.com",
 })
 MAX_SSH_PUBLIC_KEY_BYTES = 8192
+HANDLE_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
 
 
 class InvalidSshPublicKey(ValueError):
     pass
 
 
+class InvalidHandle(ValueError):
+    pass
+
+
 def normalize_email(value: str) -> str:
     return value.strip().casefold()
+
+
+def normalize_handle(value: str) -> str:
+    handle = (value or "").strip().casefold()
+    if not HANDLE_RE.fullmatch(handle):
+        raise InvalidHandle("Handle must start with a letter and use only letters, digits, underscore, or hyphen")
+    return handle
 
 
 def generate_otp() -> str:

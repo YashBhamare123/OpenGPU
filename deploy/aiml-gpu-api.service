@@ -1,12 +1,14 @@
 [Unit]
 Description=OpenGPU API
 After=network.target postgresql.service
+# HTTP API + SSH gateway only. Do not use `opengpu serve` here: that process
+# also starts the scheduler and would contest aiml-gpu-scheduler.service.
 
 [Service]
 User=gpu-api
 WorkingDirectory=/opt/aiml-gpu-reservation
 EnvironmentFile=/etc/aiml-gpu-reservation.env
-ExecStart=/opt/aiml-gpu-reservation/.venv/bin/opengpu serve --host 127.0.0.1 --port 8000
+ExecStart=/opt/aiml-gpu-reservation/.venv/bin/opengpu api --host 127.0.0.1 --port 9473
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

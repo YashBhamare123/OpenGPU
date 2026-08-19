@@ -16,8 +16,7 @@ chmod 0644 /etc/opengpu-storage.env
 # distribution MOTD and last-login notice.
 touch "/home/$TEAM_NAME/.hushlogin"
 chown "$TEAM_NAME:$TEAM_NAME" "/home/$TEAM_NAME" "/home/$TEAM_NAME/.hushlogin"
-
-echo "$TEAM_NAME:$TEAM_PASSWORD_HASH" | chpasswd -e
+passwd -l "$TEAM_NAME" >/dev/null 2>&1 || true
 
 echo "$TEAM_NAME ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$TEAM_NAME"
 chmod 440 "/etc/sudoers.d/$TEAM_NAME"
@@ -56,6 +55,8 @@ chmod 644 /etc/ssh/host_keys/authorized_keys
 install -d -m 0755 /etc/ssh/sshd_config.d
 printf '%s\n' \
     'PubkeyAuthentication yes' \
+    'PasswordAuthentication no' \
+    'KbdInteractiveAuthentication no' \
     'AuthorizedKeysFile /etc/ssh/host_keys/authorized_keys' \
     > /etc/ssh/sshd_config.d/99-opengpu-keys.conf
 chmod 0644 /etc/ssh/sshd_config.d/99-opengpu-keys.conf
@@ -65,4 +66,6 @@ install -d -m 0755 -o root -g root /run/sshd
 
 exec /usr/sbin/sshd -D -e \
     -o PubkeyAuthentication=yes \
+    -o PasswordAuthentication=no \
+    -o KbdInteractiveAuthentication=no \
     -o AuthorizedKeysFile=/etc/ssh/host_keys/authorized_keys

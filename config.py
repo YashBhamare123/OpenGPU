@@ -93,9 +93,13 @@ class Settings:
     public_base_url: str = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
     ssh_public_port: int = _int("SSH_PUBLIC_PORT", 9474)
     ssh_gateway_bind: str = os.environ.get("SSH_GATEWAY_BIND", "127.0.0.1")
+    mode: str = (os.environ.get("OPENGPU_MODE", "lab").strip().lower() or "lab")
+    claim_hours: int = _int("CLAIM_HOURS", 72)
 
 
 settings = Settings()
 
+if settings.mode not in {"lab", "personal"}:
+    raise ValueError("OPENGPU_MODE must be lab or personal")
 if settings.reservation_limit_minutes < 15 or settings.reservation_limit_minutes % 15:
     raise ValueError("RESERVATION_LIMIT_MINUTES must be at least 15 and divisible by 15")

@@ -1,8 +1,6 @@
 import io
 import os
-import secrets
 import socket
-import string
 import subprocess
 import tarfile
 import time
@@ -12,7 +10,6 @@ from pathlib import Path
 import docker
 
 from config import cpu_only, docker_image, settings
-from mailer import deliver_credentials as send_credentials
 
 APP_LABEL = "aiml-gpu-reservation"
 SEED_LABEL = "aiml-storage-seed"
@@ -24,19 +21,6 @@ def get_client():
     if _client is None:
         _client = docker.from_env()
     return _client
-
-
-def random_password(length: int = 20) -> str:
-    alphabet = string.ascii_letters + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(length))
-
-
-def linux_password_hash(password: str) -> str:
-    result = subprocess.run(
-        ["openssl", "passwd", "-6", "-stdin"], input=password, text=True,
-        capture_output=True, check=True, timeout=10,
-    )
-    return result.stdout.strip()
 
 
 def labels(user_id: int) -> dict[str, str]:
@@ -200,13 +184,11 @@ def install_authorized_keys(container, public_key: str | None) -> None:
 
 def provision_user(user_id: int, email: str, username: str, ssh_port: int,
                    container_name: str, volume_name: str, allow_legacy_volume: bool = False,
-                   email_credentials: bool = True, reservation_start: datetime | None = None,
+                   reservation_start: datetime | None = None,
                    reservation_end: datetime | None = None, workspace_gb: int = 2,
-                   temp_storage_gb: int = 100, ssh_public_key: str | None = None) -> str:
+                   temp_storage_gb: int = 100, ssh_public_key: str | None = None) -> None:
     if workspace_gb < 1 or temp_storage_gb < 1 or workspace_gb + temp_storage_gb > 200:
         raise ValueError("Reservation storage must total no more than 200 GB")
-    password = random_password()
-    password_hash = linux_password_hash(password)
     container = _get_owned_container(container_name, user_id)
     if container is not None:
         container.reload()
@@ -233,7 +215,7 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
             str(scratch_tmp): {"bind": "/tmp", "mode": "rw"},
             str(scratch_etc): {"bind": "/etc", "mode": "rw"},
         },
-        environment={"TEAM_NAME": username, "TEAM_PASSWORD_HASH": password_hash,
+        environment={"TEAM_NAME": username,
                      "WORKSPACE_GB": str(workspace_gb), "TEMP_STORAGE_GB": str(temp_storage_gb)},
         device_requests=[] if cpu_only() else [docker.types.DeviceRequest(count=1, capabilities=[["gpu"]])],
         mem_limit=settings.memory_limit,
@@ -245,20 +227,6 @@ def provision_user(user_id: int, email: str, username: str, ssh_port: int,
         tmpfs={"/run": "rw,nosuid,nodev,mode=755"},
     )
     install_authorized_keys(container, ssh_public_key)
-    if email_credentials:
-        try:
-            send_credentials(email, username, password, ssh_port, reservation_start, reservation_end)
-        except Exception:
-            # Plaintext is deliberately not retained. Recreate with a new password on retry.
-            try:
-                remove_container(container)
-            except Exception:  # noqa: BLE001
-                try:
-                    container.remove(force=True)
-                except docker.errors.DockerException:
-                    pass
-            raise
-    return password_hash
 
 
 def managed_containers():

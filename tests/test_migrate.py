@@ -15,8 +15,9 @@ class FakeCursor:
 
 
 class FakeConn:
-    def __init__(self, *, teams=False, team_cols=(), reservation_cols=(), applied=()):
+    def __init__(self, *, teams=False, share_claims=False, team_cols=(), reservation_cols=(), applied=()):
         self.teams = teams
+        self.share_claims = share_claims
         self.team_cols = set(team_cols)
         self.reservation_cols = set(reservation_cols)
         self.applied = set(applied)
@@ -25,7 +26,12 @@ class FakeConn:
     def execute(self, sql, params=None):
         self.statements.append(sql)
         if "to_regclass" in sql:
-            return FakeCursor([("teams",)] if self.teams else [(None,)])
+            name = params[0] if params else ""
+            if name == "public.teams":
+                return FakeCursor([("teams",)] if self.teams else [(None,)])
+            if name == "public.share_claims":
+                return FakeCursor([("share_claims",)] if self.share_claims else [(None,)])
+            return FakeCursor([(None,)])
         if "information_schema.columns" in sql:
             table = params[0] if params else ""
             cols = self.team_cols if table == "teams" else self.reservation_cols
@@ -41,7 +47,7 @@ class FakeConn:
         return None
 
 
-CURRENT_TEAMS = {"ssh_password_hash", "ssh_public_key", "provisioning_state", "volume_name"}
+CURRENT_TEAMS = {"ssh_password_hash", "ssh_public_key", "handle", "provisioning_state", "volume_name"}
 CURRENT_RESERVATIONS = {"duration_override", "workspace_gb", "temp_storage_gb"}
 
 
@@ -54,6 +60,7 @@ def test_upgrade_migrations_skip_down_files():
         "004_reservation_storage.sql",
         "005_configurable_duration_limit.sql",
         "006_user_ssh_public_key.sql",
+        "007_handles_and_claims.sql",
     ]
     assert all(not name.endswith("_down.sql") for name in names)
 
@@ -68,11 +75,30 @@ def test_migrate_empty_database_applies_init_and_stamps(monkeypatch):
 
 
 def test_migrate_current_schema_stamps_without_running_upgrades(monkeypatch):
-    conn = FakeConn(teams=True, team_cols=CURRENT_TEAMS, reservation_cols=CURRENT_RESERVATIONS)
+    conn = FakeConn(
+        teams=True,
+        share_claims=True,
+        team_cols=CURRENT_TEAMS,
+        reservation_cols=CURRENT_RESERVATIONS,
+    )
     monkeypatch.setattr(migrate, "_connect", lambda: conn)
     assert migrate.migrate() == 0
     assert conn.applied == {path.name for path in migrate.upgrade_migrations()}
     assert not any("ALTER TABLE" in sql or "RENAME COLUMN" in sql for sql in conn.statements)
+
+
+def test_migrate_from_ssh_key_schema_applies_handles_and_claims(monkeypatch):
+    applied = {path.name for path in migrate.upgrade_migrations() if not path.name.startswith("007_")}
+    conn = FakeConn(
+        teams=True,
+        team_cols={"ssh_password_hash", "ssh_public_key", "provisioning_state", "volume_name"},
+        reservation_cols=CURRENT_RESERVATIONS,
+        applied=applied,
+    )
+    monkeypatch.setattr(migrate, "_connect", lambda: conn)
+    assert migrate.migrate() == 0
+    assert "007_handles_and_claims.sql" in conn.applied
+    assert "CREATE TABLE IF NOT EXISTS share_claims" in "\n".join(conn.statements)
 
 
 def test_migrate_legacy_schema_applies_pending_files(monkeypatch):

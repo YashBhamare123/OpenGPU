@@ -22,14 +22,17 @@ def audit(cursor, event_type: str, team_id=None, details=None):
 
 
 def allocate_resources(cursor, team_id: int):
-    cursor.execute("SELECT ssh_port,name,container_name,volume_name,legacy_volume FROM teams WHERE id=%s FOR UPDATE", (team_id,))
-    port, username, container_name, volume_name, legacy_volume = cursor.fetchone()
+    cursor.execute(
+        "SELECT ssh_port,name,handle,container_name,volume_name,legacy_volume FROM teams WHERE id=%s FOR UPDATE",
+        (team_id,),
+    )
+    port, username, handle, container_name, volume_name, legacy_volume = cursor.fetchone()
     if port is None:
         cursor.execute("SELECT nextval('ssh_port_seq')")
         port = cursor.fetchone()[0]
         if port > settings.ssh_port_end:
             raise RuntimeError("SSH port range is exhausted")
-    username = username or f"gpu{team_id}"
+    username = username or handle or f"gpu{team_id}"
     container_name = container_name or f"gpu-user-{team_id}"
     volume_name = volume_name or f"gpu-workspace-{team_id}"
     cursor.execute(
@@ -73,7 +76,7 @@ def claim_job():
                 (job[0],),
             )
         conn.commit()
-        return {"job_id": job[0], "user_id": job[1], "email": str(job[2]), "port": port,
+        return {"job_id": job[0], "user_id": job[1], "email": str(job[2] or ""), "port": port,
                 "username": username, "container_name": container_name, "volume_name": volume_name,
                 "legacy_volume": legacy_volume, "purpose": job[3],
                 "ssh_public_key": job[4],
@@ -88,10 +91,9 @@ def process_one_job():
     if not job:
         return
     try:
-        password_hash = provision_user(
+        provision_user(
             job["user_id"], job["email"], job["username"], job["port"],
             job["container_name"], job["volume_name"], job["legacy_volume"],
-            email_credentials=job["purpose"] != "initial",
             reservation_start=job["reservation_start"], reservation_end=job["reservation_end"],
             workspace_gb=job["workspace_gb"], temp_storage_gb=job["temp_storage_gb"],
             ssh_public_key=job["ssh_public_key"],
@@ -100,8 +102,8 @@ def process_one_job():
         try:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "UPDATE teams SET provisioning_state='ready',ssh_password_hash=%s,provisioning_error=NULL WHERE id=%s",
-                    (password_hash, job["user_id"]),
+                    "UPDATE teams SET provisioning_state='ready',provisioning_error=NULL WHERE id=%s",
+                    (job["user_id"],),
                 )
                 cursor.execute(
                     "SELECT 1 FROM information_schema.columns WHERE table_name='teams' AND column_name='ssh_password_legacy'"

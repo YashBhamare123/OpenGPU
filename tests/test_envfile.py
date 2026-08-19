@@ -3,6 +3,7 @@ import os
 import envfile
 
 REQUIRED = {
+    "OPENGPU_MODE": "lab",
     "SERVER_IP": "10.0.0.10",
     "DOCKER_BIND_IP": "10.0.0.10",
     "WORKSPACE_ROOT": "/var/tmp/opengpu-ws",
@@ -24,18 +25,18 @@ def _preserve_env(monkeypatch):
     monkeypatch.setenv("DOCKER_IMAGE", "yashbhamare123/opengpu:ml")
     monkeypatch.setenv("CPU_ONLY", "false")
     monkeypatch.setattr("detect.host_defaults", dict)
+    monkeypatch.setattr("detect.nvidia_available", lambda: True)
 
 
-def _answer(prompt: str, *, empty_first: dict[str, int] | None = None) -> str:
-    name = prompt.split()[0]
-    empty_first = empty_first or {}
-    if empty_first.get(name):
-        empty_first[name] -= 1
-        return ""
-    field = next(item for item in envfile.FIELDS if item.name == name)
-    if field.required:
-        return REQUIRED[field.name]
-    return "skip"
+def _replies(*answers):
+    pending = list(answers)
+
+    def fake(_prompt):
+        if not pending:
+            return ""
+        return pending.pop(0)
+
+    return fake
 
 
 def test_write_env_skips_optional_and_hides_secrets(tmp_path, monkeypatch, capsys):
@@ -59,7 +60,11 @@ def test_prompt_skip_keeps_optional_empty(tmp_path, monkeypatch):
     for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "NGROK_AUTHTOKEN", "PUBLIC_BASE_URL", "ACCESS_CONTACT_EMAIL"):
         monkeypatch.delenv(key, raising=False)
     path = tmp_path / ".env"
-    chosen = envfile.configure_env(path, input_fn=_answer, getpass_fn=_answer)
+    chosen = envfile.configure_env(
+        path,
+        input_fn=_replies("1", "2", "admin@example.edu", "1", "1", "1"),
+        getpass_fn=_replies(),
+    )
     assert "SMTP_HOST" not in chosen
     assert "SMTP_USER" not in chosen
     assert "NGROK_AUTHTOKEN" not in chosen
@@ -83,30 +88,51 @@ def test_skip_smtp_omits_relay_fields(tmp_path, monkeypatch):
 def test_required_reprompts_on_empty(tmp_path, monkeypatch):
     _preserve_env(monkeypatch)
     monkeypatch.delenv("ADMIN_EMAILS", raising=False)
-    pending = {"ADMIN_EMAILS": 1}
     path = tmp_path / ".env"
-
-    def fake(prompt):
-        return _answer(prompt, empty_first=pending)
-
-    chosen = envfile.configure_env(path, input_fn=fake, getpass_fn=fake)
+    chosen = envfile.configure_env(
+        path,
+        input_fn=_replies("1", "2", "", "admin@example.edu", "1", "1", "1"),
+        getpass_fn=_replies(),
+    )
     assert chosen["ADMIN_EMAILS"] == REQUIRED["ADMIN_EMAILS"]
-    assert pending["ADMIN_EMAILS"] == 0
 
 
-def test_interactive_setup_asks_only_identity_fields(tmp_path, monkeypatch):
+def test_interactive_setup_pages_lab_identity(tmp_path, monkeypatch, capsys):
     _preserve_env(monkeypatch)
     monkeypatch.delenv("ADMIN_EMAILS", raising=False)
     for key in ("SMTP_HOST", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD", "ACCESS_CONTACT_EMAIL"):
         monkeypatch.delenv(key, raising=False)
-    asked = []
+    envfile.configure_env(
+        tmp_path / ".env",
+        input_fn=_replies("1", "2", "admin@example.edu", "1", "1", "1"),
+        getpass_fn=_replies(),
+    )
+    out = capsys.readouterr().out
+    assert "Onboarding mode" in out
+    assert "Lab email" in out
+    assert "Administrator emails" in out
+    assert "Access-denied contact" in out
+    assert "Browser cookies" in out
+    assert "Accelerator" in out
+    assert "SMTP provider" not in out
 
-    def fake(prompt):
-        asked.append(prompt.split()[0])
-        return _answer(prompt)
 
-    envfile.configure_env(tmp_path / ".env", input_fn=fake, getpass_fn=fake)
-    assert asked == ["SMTP_HOST", "ADMIN_EMAILS", "ACCESS_CONTACT_EMAIL"]
+def test_personal_mode_skips_lab_email_pages(tmp_path, monkeypatch, capsys):
+    _preserve_env(monkeypatch)
+    monkeypatch.delenv("ADMIN_EMAILS", raising=False)
+    chosen = envfile.configure_env(
+        tmp_path / ".env",
+        input_fn=_replies("2", "2", "1"),
+        getpass_fn=_replies(),
+    )
+    out = capsys.readouterr().out
+    assert chosen["OPENGPU_MODE"] == "personal"
+    assert "ADMIN_EMAILS" not in chosen
+    assert "SMTP_HOST" not in chosen
+    assert "Lab email" not in out
+    assert "Administrator emails" not in out
+    assert chosen["COOKIE_SECURE"] == "true"
+    assert chosen["CLAIM_HOURS"] == "72"
 
 
 def test_empty_prompt_accepts_detected_origins(tmp_path, monkeypatch):
@@ -121,16 +147,31 @@ def test_empty_prompt_accepts_detected_origins(tmp_path, monkeypatch):
         "DOCKER_BIND_IP": "127.0.0.1",
         "WORKSPACE_ROOT": "/var/tmp/ws",
     }
-
-    def fake(prompt):
-        name = prompt.split()[0]
-        if name == "ADMIN_EMAILS":
-            return "admin@example.edu"
-        return ""
-
-    chosen = envfile.configure_env(path, input_fn=fake, getpass_fn=fake, detected=detected)
+    chosen = envfile.configure_env(
+        path,
+        input_fn=_replies("1", "2", "admin@example.edu", "1", "", "1"),
+        getpass_fn=_replies(),
+        detected=detected,
+    )
     assert chosen["ALLOWED_ORIGINS"] == detected["ALLOWED_ORIGINS"]
     assert chosen["COOKIE_SECURE"] == "false"
+
+
+def test_gmail_smtp_pages_fill_relay(tmp_path, monkeypatch):
+    _preserve_env(monkeypatch)
+    for key in ("SMTP_HOST", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD", "ADMIN_EMAILS"):
+        monkeypatch.delenv(key, raising=False)
+    chosen = envfile.configure_env(
+        tmp_path / ".env",
+        input_fn=_replies("1", "1", "1", "gpu@example.edu", "gpu@example.edu", "admin@example.edu", "1", "2", "1"),
+        getpass_fn=_replies("app-password"),
+    )
+    assert chosen["SMTP_HOST"] == "smtp.gmail.com"
+    assert chosen["SMTP_PORT"] == "587"
+    assert chosen["SMTP_FROM"] == "gpu@example.edu"
+    assert chosen["SMTP_USER"] == "gpu@example.edu"
+    assert chosen["SMTP_PASSWORD"] == "app-password"
+    assert chosen["COOKIE_SECURE"] == "true"
 
 
 def test_default_env_path_uses_existing_cwd_env(tmp_path, monkeypatch):
