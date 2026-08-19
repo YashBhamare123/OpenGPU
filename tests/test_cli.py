@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 import cli
@@ -84,8 +86,9 @@ def test_api_skips_scheduler_and_image_pull(monkeypatch):
 
 
 def test_production_api_unit_does_not_start_combined_serve():
-    text = open("deploy/aiml-gpu-api.service", encoding="utf-8").read()
-    assert "opengpu api --host 127.0.0.1 --port 9473" in text
-    assert "opengpu serve" not in text
-    scheduler = open("deploy/aiml-gpu-scheduler.service", encoding="utf-8").read()
+    text = Path("deploy/aiml-gpu-api.service").read_text(encoding="utf-8")
+    exec_start = next(line for line in text.splitlines() if line.startswith("ExecStart="))
+    assert exec_start.endswith("opengpu api --host 127.0.0.1 --port 9473")
+    assert "opengpu serve" not in exec_start
+    scheduler = Path("deploy/aiml-gpu-scheduler.service").read_text(encoding="utf-8")
     assert "opengpu scheduler" in scheduler
